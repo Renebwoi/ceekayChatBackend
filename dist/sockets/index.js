@@ -10,13 +10,14 @@ function initSocketServer(httpServer) {
     const io = new socket_io_1.Server(httpServer, {
         cors: {
             origin: env_1.appConfig.clientOrigin,
-            credentials: true
-        }
+            credentials: true,
+        },
     });
     // Require a valid JWT for every socket connection before joining rooms.
     io.use((socket, next) => {
         try {
-            const token = socket.handshake.auth?.token ?? socket.handshake.headers?.authorization?.split(" ")[1];
+            const token = socket.handshake.auth?.token ??
+                socket.handshake.headers?.authorization?.split(" ")[1];
             if (!token) {
                 return next(new Error("Authentication token missing"));
             }

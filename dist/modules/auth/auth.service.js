@@ -13,7 +13,9 @@ const jwt_1 = require("./jwt");
 const SALT_ROUNDS = 10;
 // Create a new user account and return the sanitized user + JWT.
 async function registerUser(payload) {
-    const existing = await prisma_1.prisma.user.findUnique({ where: { email: payload.email } });
+    const existing = await prisma_1.prisma.user.findUnique({
+        where: { email: payload.email },
+    });
     if (existing) {
         throw new errors_1.AppError(http_status_codes_1.StatusCodes.CONFLICT, "Email already registered");
     }
@@ -23,18 +25,20 @@ async function registerUser(payload) {
             name: payload.name,
             email: payload.email,
             password: hashedPassword,
-            role: payload.role
-        }
+            role: payload.role,
+        },
     });
     const token = (0, jwt_1.signToken)({ sub: user.id, role: user.role });
     return {
         user: sanitizeUser(user),
-        token
+        token,
     };
 }
 // Verify credentials and issue a fresh JWT on success.
 async function loginUser(payload) {
-    const user = await prisma_1.prisma.user.findUnique({ where: { email: payload.email } });
+    const user = await prisma_1.prisma.user.findUnique({
+        where: { email: payload.email },
+    });
     if (!user) {
         throw new errors_1.AppError(http_status_codes_1.StatusCodes.UNAUTHORIZED, "Invalid credentials");
     }
@@ -45,7 +49,7 @@ async function loginUser(payload) {
     const token = (0, jwt_1.signToken)({ sub: user.id, role: user.role });
     return {
         user: sanitizeUser(user),
-        token
+        token,
     };
 }
 // Strip the hashed password before sending a user to the client.

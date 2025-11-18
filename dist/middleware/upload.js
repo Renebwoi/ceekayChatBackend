@@ -17,7 +17,7 @@ const ALLOWED_MIME_TYPES = new Set([
     "application/vnd.ms-excel",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "image/png",
-    "image/jpeg"
+    "image/jpeg",
 ]);
 // Pre-configured multer instance with size + mimetype checks.
 exports.upload = (0, multer_1.default)({
@@ -28,5 +28,5 @@ exports.upload = (0, multer_1.default)({
             return cb(new errors_1.AppError(http_status_codes_1.StatusCodes.BAD_REQUEST, "Unsupported file type"));
         }
         return cb(null, true);
-    }
+    },
 });

@@ -18,7 +18,7 @@ function buildApp() {
     // Allow browser clients from CLIENT_ORIGIN to make authenticated requests.
     app.use((0, cors_1.default)({
         origin: env_1.appConfig.clientOrigin,
-        credentials: true
+        credentials: true,
     }));
     // Parse incoming JSON/form payloads before hitting route handlers.
     app.use(express_1.default.json({ limit: "10mb" }));

@@ -15,7 +15,7 @@ const envSchema = zod_1.z.object({
     B2_KEY_ID: zod_1.z.string(),
     B2_APPLICATION_KEY: zod_1.z.string(),
     B2_BUCKET_ID: zod_1.z.string(),
-    B2_PUBLIC_BASE_URL: zod_1.z.string().url()
+    B2_PUBLIC_BASE_URL: zod_1.z.string().url(),
 });
 // Validate the current process.env snapshot so we fail fast during boot.
 const parsed = envSchema.safeParse(process.env);
@@ -36,6 +36,6 @@ exports.appConfig = {
         keyId: env.B2_KEY_ID,
         applicationKey: env.B2_APPLICATION_KEY,
         bucketId: env.B2_BUCKET_ID,
-        publicBaseUrl: env.B2_PUBLIC_BASE_URL
-    }
+        publicBaseUrl: env.B2_PUBLIC_BASE_URL,
+    },
 };

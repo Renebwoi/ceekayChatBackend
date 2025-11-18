@@ -8,12 +8,18 @@ import {
   createTextMessage,
   messageSelect,
   serializeMessage,
+  pinMessage,
+  unpinMessage,
 } from "./message.service";
 import { AppError } from "../../utils/errors";
 import { uploadToB2 } from "../../lib/b2";
 import { prisma } from "../../lib/prisma";
 import { MessageType, Prisma } from "@prisma/client";
-import { broadcastCourseMessage } from "../../sockets/chat.handlers";
+import {
+  broadcastCourseMessage,
+  broadcastCourseMessagePinned,
+  broadcastCourseMessageUnpinned,
+} from "../../sockets/chat.handlers";
 import { Server } from "socket.io";
 
 // Querystring guard for message pagination.
@@ -137,5 +143,73 @@ export const uploadCourseFile = asyncHandler(
     broadcastCourseMessage(getSocketInstance(req), message);
 
     res.status(StatusCodes.CREATED).json(message);
+  }
+);
+
+// POST /api/courses/:courseId/messages/:messageId/pin
+export const pinCourseMessage = asyncHandler(
+  async (req: Request, res: Response) => {
+    const userId = req.user?.id;
+    const courseId = req.params.courseId;
+    const messageId = req.params.messageId;
+
+    if (!userId) {
+      throw new AppError(
+        StatusCodes.UNAUTHORIZED,
+        "User missing from request context"
+      );
+    }
+
+    if (!messageId) {
+      throw new AppError(StatusCodes.BAD_REQUEST, "Message id is required");
+    }
+
+    const membership = await ensureCourseMembership(courseId, userId);
+    if (!membership.isLecturer) {
+      throw new AppError(
+        StatusCodes.FORBIDDEN,
+        "Only the course lecturer can pin messages"
+      );
+    }
+
+    const message = await pinMessage(courseId, messageId, userId);
+
+    broadcastCourseMessagePinned(getSocketInstance(req), message);
+
+    res.status(StatusCodes.OK).json(message);
+  }
+);
+
+// DELETE /api/courses/:courseId/messages/:messageId/pin
+export const unpinCourseMessage = asyncHandler(
+  async (req: Request, res: Response) => {
+    const userId = req.user?.id;
+    const courseId = req.params.courseId;
+    const messageId = req.params.messageId;
+
+    if (!userId) {
+      throw new AppError(
+        StatusCodes.UNAUTHORIZED,
+        "User missing from request context"
+      );
+    }
+
+    if (!messageId) {
+      throw new AppError(StatusCodes.BAD_REQUEST, "Message id is required");
+    }
+
+    const membership = await ensureCourseMembership(courseId, userId);
+    if (!membership.isLecturer) {
+      throw new AppError(
+        StatusCodes.FORBIDDEN,
+        "Only the course lecturer can unpin messages"
+      );
+    }
+
+    const message = await unpinMessage(courseId, messageId);
+
+    broadcastCourseMessageUnpinned(getSocketInstance(req), message);
+
+    res.status(StatusCodes.OK).json(message);
   }
 );

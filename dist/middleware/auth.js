@@ -41,9 +41,9 @@ async function ensureCourseMembership(courseId, userId) {
             lecturerId: true,
             enrollments: {
                 where: { userId },
-                select: { id: true }
-            }
-        }
+                select: { id: true },
+            },
+        },
     });
     if (!membership) {
         throw new errors_1.AppError(http_status_codes_1.StatusCodes.NOT_FOUND, "Course not found");

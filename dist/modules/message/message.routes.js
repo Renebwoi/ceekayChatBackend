@@ -13,5 +13,7 @@ exports.uploadRouter = uploadRouter;
 messageRouter.use(auth_1.authenticate);
 messageRouter.get("/", message_controller_1.listCourseMessages);
 messageRouter.post("/", message_controller_1.createCourseMessage);
+messageRouter.post("/:messageId/pin", message_controller_1.pinCourseMessage);
+messageRouter.delete("/:messageId/pin", message_controller_1.unpinCourseMessage);
 uploadRouter.use(auth_1.authenticate);
 uploadRouter.post("/", upload_1.upload.single("file"), message_controller_1.uploadCourseFile);

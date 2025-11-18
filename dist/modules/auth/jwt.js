@@ -11,7 +11,7 @@ const env_1 = require("../../config/env");
 function signToken(payload) {
     return jsonwebtoken_1.default.sign(payload, env_1.appConfig.jwtSecret, {
         algorithm: "HS256",
-        expiresIn: "7d"
+        expiresIn: "7d",
     });
 }
 // Validate a token and return the decoded payload (throws if invalid).

@@ -86,3 +86,25 @@ export function broadcastCourseMessage(
   if (!io) return;
   io.to(message.courseId).emit("course_message:new", message);
 }
+
+export function broadcastCourseMessagePinned(
+  io: Server | undefined,
+  message: CourseSocketMessage
+) {
+  if (!io) return;
+  io.to(message.courseId).emit("course_message:pinned", {
+    courseId: message.courseId,
+    message,
+  });
+}
+
+export function broadcastCourseMessageUnpinned(
+  io: Server | undefined,
+  message: CourseSocketMessage
+) {
+  if (!io) return;
+  io.to(message.courseId).emit("course_message:unpinned", {
+    courseId: message.courseId,
+    message,
+  });
+}

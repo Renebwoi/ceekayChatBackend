@@ -2,6 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerChatHandlers = registerChatHandlers;
 exports.broadcastCourseMessage = broadcastCourseMessage;
+exports.broadcastCourseMessagePinned = broadcastCourseMessagePinned;
+exports.broadcastCourseMessageUnpinned = broadcastCourseMessageUnpinned;
 const zod_1 = require("zod");
 const prisma_1 = require("../lib/prisma");
 const auth_1 = require("../middleware/auth");
@@ -9,7 +11,7 @@ const message_service_1 = require("../modules/message/message.service");
 const errors_1 = require("../utils/errors");
 const socketMessageSchema = zod_1.z.object({
     courseId: zod_1.z.string().min(1),
-    content: zod_1.z.string().min(1)
+    content: zod_1.z.string().min(1),
 });
 // Attach course messaging handlers to the Socket.io instance.
 function registerChatHandlers(io) {
@@ -49,12 +51,9 @@ async function joinUserRooms(socket) {
     }
     const courses = await prisma_1.prisma.course.findMany({
         where: {
-            OR: [
-                { lecturerId: userId },
-                { enrollments: { some: { userId } } }
-            ]
+            OR: [{ lecturerId: userId }, { enrollments: { some: { userId } } }],
         },
-        select: { id: true }
+        select: { id: true },
     });
     courses.forEach((course) => socket.join(course.id));
 }
@@ -63,4 +62,20 @@ function broadcastCourseMessage(io, message) {
     if (!io)
         return;
     io.to(message.courseId).emit("course_message:new", message);
+}
+function broadcastCourseMessagePinned(io, message) {
+    if (!io)
+        return;
+    io.to(message.courseId).emit("course_message:pinned", {
+        courseId: message.courseId,
+        message,
+    });
+}
+function broadcastCourseMessageUnpinned(io, message) {
+    if (!io)
+        return;
+    io.to(message.courseId).emit("course_message:unpinned", {
+        courseId: message.courseId,
+        message,
+    });
 }

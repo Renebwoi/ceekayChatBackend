@@ -18,8 +18,8 @@ exports.getCurrentUser = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
             email: true,
             role: true,
             createdAt: true,
-            updatedAt: true
-        }
+            updatedAt: true,
+        },
     });
     if (!user) {
         throw new errors_1.AppError(http_status_codes_1.StatusCodes.NOT_FOUND, "User not found");

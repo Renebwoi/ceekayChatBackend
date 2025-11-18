@@ -11,12 +11,12 @@ const registerSchema = zod_1.z.object({
     name: zod_1.z.string().min(2),
     email: zod_1.z.string().email(),
     password: zod_1.z.string().min(8),
-    role: zod_1.z.nativeEnum(client_1.UserRole)
+    role: zod_1.z.nativeEnum(client_1.UserRole),
 });
 // Input validation for login body.
 const loginSchema = zod_1.z.object({
     email: zod_1.z.string().email(),
-    password: zod_1.z.string().min(8)
+    password: zod_1.z.string().min(8),
 });
 // POST /api/auth/register
 exports.register = (0, asyncHandler_1.asyncHandler)(async (req, res) => {

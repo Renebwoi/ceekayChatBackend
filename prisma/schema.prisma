@@ -18,34 +18,35 @@ enum MessageType {
 }
 
 model User {
-  id          String       @id @default(cuid())
-  email       String       @unique
-  password    String
-  name        String
-  role        UserRole
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      UserRole
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  enrollments Enrollment[]
-  courses     Course[]     @relation("CourseLecturer")
-  messages    Message[]
+  enrollments    Enrollment[]
+  courses        Course[]     @relation("CourseLecturer")
+  messages       Message[]
+  pinnedMessages Message[]    @relation("MessagePinnedBy")
 }
 
 model Course {
-  id          String       @id @default(cuid())
-  code        String       @unique
-  title       String
-  lecturerId  String
-  lecturer    User         @relation("CourseLecturer", fields: [lecturerId], references: [id])
+  id         String @id @default(cuid())
+  code       String @unique
+  title      String
+  lecturerId String
+  lecturer   User   @relation("CourseLecturer", fields: [lecturerId], references: [id])
 
   enrollments Enrollment[]
   messages    Message[]
 }
 
 model Enrollment {
-  id        String @id @default(cuid())
-  userId    String
-  courseId  String
+  id       String @id @default(cuid())
+  userId   String
+  courseId String
 
   user   User   @relation(fields: [userId], references: [id])
   course Course @relation(fields: [courseId], references: [id])
@@ -54,15 +55,19 @@ model Enrollment {
 }
 
 model Message {
-  id        String      @id @default(cuid())
-  courseId  String
-  senderId  String
-  content   String?
-  type      MessageType @default(TEXT)
-  createdAt DateTime    @default(now())
+  id         String      @id @default(cuid())
+  courseId   String
+  senderId   String
+  content    String?
+  type       MessageType @default(TEXT)
+  createdAt  DateTime    @default(now())
+  pinned     Boolean     @default(false)
+  pinnedAt   DateTime?
+  pinnedById String?
 
-  course     Course     @relation(fields: [courseId], references: [id])
-  sender     User       @relation(fields: [senderId], references: [id])
+  course     Course      @relation(fields: [courseId], references: [id])
+  sender     User        @relation(fields: [senderId], references: [id])
+  pinnedBy   User?       @relation("MessagePinnedBy", fields: [pinnedById], references: [id])
   attachment Attachment?
 }
 
