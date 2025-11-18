@@ -1,0 +1,79 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  STUDENT
+  LECTURER
+}
+
+enum MessageType {
+  TEXT
+  FILE
+}
+
+model User {
+  id          String       @id @default(cuid())
+  email       String       @unique
+  password    String
+  name        String
+  role        UserRole
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  enrollments Enrollment[]
+  courses     Course[]     @relation("CourseLecturer")
+  messages    Message[]
+}
+
+model Course {
+  id          String       @id @default(cuid())
+  code        String       @unique
+  title       String
+  lecturerId  String
+  lecturer    User         @relation("CourseLecturer", fields: [lecturerId], references: [id])
+
+  enrollments Enrollment[]
+  messages    Message[]
+}
+
+model Enrollment {
+  id        String @id @default(cuid())
+  userId    String
+  courseId  String
+
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id])
+
+  @@unique([userId, courseId])
+}
+
+model Message {
+  id        String      @id @default(cuid())
+  courseId  String
+  senderId  String
+  content   String?
+  type      MessageType @default(TEXT)
+  createdAt DateTime    @default(now())
+
+  course     Course     @relation(fields: [courseId], references: [id])
+  sender     User       @relation(fields: [senderId], references: [id])
+  attachment Attachment?
+}
+
+model Attachment {
+  id        String   @id @default(cuid())
+  messageId String   @unique
+  fileName  String
+  mimeType  String
+  size      Int
+  url       String
+  createdAt DateTime @default(now())
+
+  message Message @relation(fields: [messageId], references: [id])
+}
