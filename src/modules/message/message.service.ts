@@ -112,33 +112,35 @@ export async function pinMessage(
 ) {
   await ensureMessageInCourse(messageId, courseId);
 
-  const message = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-  // Unpin any other message in this course before setting the new pin.
-  await tx.message.updateMany({
-      where: {
-        courseId,
-        pinned: true,
-        NOT: { id: messageId },
-      },
-      data: {
-        pinned: false,
-        pinnedAt: null,
-        pinnedById: null,
-      },
-    });
+  const message = await prisma.$transaction(
+    async (tx: Prisma.TransactionClient) => {
+      // Unpin any other message in this course before setting the new pin.
+      await tx.message.updateMany({
+        where: {
+          courseId,
+          pinned: true,
+          NOT: { id: messageId },
+        },
+        data: {
+          pinned: false,
+          pinnedAt: null,
+          pinnedById: null,
+        },
+      });
 
-    const updated = await tx.message.update({
-      where: { id: messageId },
-      data: {
-        pinned: true,
-        pinnedAt: new Date(),
-        pinnedById: lecturerId,
-      },
-      select: messageSelect,
-    });
+      const updated = await tx.message.update({
+        where: { id: messageId },
+        data: {
+          pinned: true,
+          pinnedAt: new Date(),
+          pinnedById: lecturerId,
+        },
+        select: messageSelect,
+      });
 
-    return updated as MessageWithRelations;
-  });
+      return updated as MessageWithRelations;
+    }
+  );
 
   return serializeMessage(message);
 }
