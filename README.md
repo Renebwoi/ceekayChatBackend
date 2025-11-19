@@ -100,6 +100,7 @@ prisma/
 - Realtime Socket.io events per course room
 - File uploads streamed to Backblaze B2 with attachment records
 - Admin role can create/update/delete courses, manage enrollments, assign lecturers, and ban/unban users via `/api/admin`
+- Per-user unread tracking backed by `CourseReadState`; `/api/courses/my` includes `unreadCount` and `/api/courses/:courseId/read` marks a course chat as read
 
 ## Testing & quality
 
@@ -111,3 +112,9 @@ prisma/
 - Build with `npm run build` and deploy the `dist/` output alongside generated Prisma client
 - Ensure environment variables are provided (GitHub Secrets, Azure KeyVault, etc.)
 - Run database migrations via `npm run prisma:migrate`
+
+## Unread tracking
+
+- `CourseReadState` Prisma model records the last time each user opened a course chat
+- `GET /api/courses/my` now includes an `unreadCount` per course derived from `CourseReadState`
+- `POST /api/courses/:courseId/read` upserts the read state (no Socket.io side effects); call it when a user views a course chat

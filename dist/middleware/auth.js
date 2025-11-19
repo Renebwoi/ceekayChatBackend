@@ -1,28 +1,41 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.authenticate = authenticate;
+exports.authenticate = void 0;
 exports.requireRole = requireRole;
 exports.ensureCourseMembership = ensureCourseMembership;
 const http_status_codes_1 = require("http-status-codes");
 const prisma_1 = require("../lib/prisma");
 const errors_1 = require("../utils/errors");
 const jwt_1 = require("../modules/auth/jwt");
+const asyncHandler_1 = require("../utils/asyncHandler");
 // Parse and verify Authorization headers, attaching the user to the request.
-function authenticate(req, _res, next) {
+exports.authenticate = (0, asyncHandler_1.asyncHandler)(async (req, _res, next) => {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith("Bearer ")) {
-        return next(new errors_1.AppError(http_status_codes_1.StatusCodes.UNAUTHORIZED, "Authorization header missing"));
+        throw new errors_1.AppError(http_status_codes_1.StatusCodes.UNAUTHORIZED, "Authorization header missing");
     }
+    let userId;
     try {
         const token = authHeader.split(" ")[1];
         const payload = (0, jwt_1.verifyToken)(token);
-        req.user = { id: payload.sub, role: payload.role };
-        return next();
+        userId = payload.sub;
     }
-    catch (error) {
-        return next(new errors_1.AppError(http_status_codes_1.StatusCodes.UNAUTHORIZED, "Invalid or expired token"));
+    catch {
+        throw new errors_1.AppError(http_status_codes_1.StatusCodes.UNAUTHORIZED, "Invalid or expired token");
     }
-}
+    const user = await prisma_1.prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, role: true, isBanned: true },
+    });
+    if (!user) {
+        throw new errors_1.AppError(http_status_codes_1.StatusCodes.UNAUTHORIZED, "User not found");
+    }
+    if (user.isBanned) {
+        throw new errors_1.AppError(http_status_codes_1.StatusCodes.FORBIDDEN, "Account is banned");
+    }
+    req.user = { id: user.id, role: user.role };
+    next();
+});
 // Gate a route to a single role or list of roles.
 function requireRole(role) {
     const allowedRoles = Array.isArray(role) ? role : [role];

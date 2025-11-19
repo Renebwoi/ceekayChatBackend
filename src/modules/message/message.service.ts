@@ -45,6 +45,7 @@ export type MessageWithRelations = Prisma.MessageGetPayload<{
 export function serializeMessage(message: MessageWithRelations) {
   return {
     ...message,
+    senderId: message.senderId,
     attachment: message.attachment ?? null,
     pinned: message.pinned ?? false,
     pinnedAt: message.pinnedAt ?? null,

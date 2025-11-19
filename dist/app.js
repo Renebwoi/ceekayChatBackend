@@ -11,6 +11,7 @@ const env_1 = require("./config/env");
 const auth_routes_1 = require("./modules/auth/auth.routes");
 const user_routes_1 = require("./modules/user/user.routes");
 const course_routes_1 = require("./modules/course/course.routes");
+const admin_routes_1 = require("./modules/admin/admin.routes");
 const errorHandler_1 = require("./middleware/errorHandler");
 // Build and configure the Express instance with all middleware/routes.
 function buildApp() {
@@ -31,6 +32,7 @@ function buildApp() {
     app.use("/api/auth", auth_routes_1.authRoutes);
     app.use("/api/users", user_routes_1.userRoutes);
     app.use("/api/courses", course_routes_1.courseRoutes);
+    app.use("/api/admin", admin_routes_1.adminRoutes);
     // Last middleware handles all errors bubbled up from routes.
     app.use(errorHandler_1.errorHandler);
     return app;

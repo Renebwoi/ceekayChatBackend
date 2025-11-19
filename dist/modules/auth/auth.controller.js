@@ -11,7 +11,9 @@ const registerSchema = zod_1.z.object({
     name: zod_1.z.string().min(2),
     email: zod_1.z.string().email(),
     password: zod_1.z.string().min(8),
-    role: zod_1.z.nativeEnum(client_1.UserRole),
+    role: zod_1.z.nativeEnum(client_1.UserRole).refine((role) => role !== client_1.UserRole.ADMIN, {
+        message: "Self-service admin registration is not allowed",
+    }),
 });
 // Input validation for login body.
 const loginSchema = zod_1.z.object({

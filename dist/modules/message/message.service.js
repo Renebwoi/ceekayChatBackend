@@ -47,6 +47,7 @@ exports.messageSelect = {
 function serializeMessage(message) {
     return {
         ...message,
+        senderId: message.senderId,
         attachment: message.attachment ?? null,
         pinned: message.pinned ?? false,
         pinnedAt: message.pinnedAt ?? null,

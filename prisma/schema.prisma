@@ -32,6 +32,7 @@ model User {
   courses        Course[]     @relation("CourseLecturer")
   messages       Message[]
   pinnedMessages Message[]    @relation("MessagePinnedBy")
+  courseReadStates CourseReadState[]
 }
 
 model Course {
@@ -43,6 +44,7 @@ model Course {
 
   enrollments Enrollment[]
   messages    Message[]
+  readStates  CourseReadState[]
 }
 
 model Enrollment {
@@ -83,4 +85,16 @@ model Attachment {
   createdAt DateTime @default(now())
 
   message Message @relation(fields: [messageId], references: [id])
+}
+
+model CourseReadState {
+  id         String   @id @default(cuid())
+  userId     String
+  courseId   String
+  lastReadAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id])
+
+  @@unique([userId, courseId])
 }

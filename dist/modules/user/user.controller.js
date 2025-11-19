@@ -17,6 +17,7 @@ exports.getCurrentUser = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
             name: true,
             email: true,
             role: true,
+            isBanned: true,
             createdAt: true,
             updatedAt: true,
         },

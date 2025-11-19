@@ -10,6 +10,7 @@ const http_status_codes_1 = require("http-status-codes");
 const prisma_1 = require("../../lib/prisma");
 const errors_1 = require("../../utils/errors");
 const jwt_1 = require("./jwt");
+const client_1 = require("@prisma/client");
 const SALT_ROUNDS = 10;
 // Create a new user account and return the sanitized user + JWT.
 async function registerUser(payload) {
@@ -18,6 +19,9 @@ async function registerUser(payload) {
     });
     if (existing) {
         throw new errors_1.AppError(http_status_codes_1.StatusCodes.CONFLICT, "Email already registered");
+    }
+    if (payload.role === client_1.UserRole.ADMIN) {
+        throw new errors_1.AppError(http_status_codes_1.StatusCodes.FORBIDDEN, "Admin accounts must be created by an administrator");
     }
     const hashedPassword = await bcrypt_1.default.hash(payload.password, SALT_ROUNDS);
     const user = await prisma_1.prisma.user.create({
@@ -45,6 +49,9 @@ async function loginUser(payload) {
     const passwordMatch = await bcrypt_1.default.compare(payload.password, user.password);
     if (!passwordMatch) {
         throw new errors_1.AppError(http_status_codes_1.StatusCodes.UNAUTHORIZED, "Invalid credentials");
+    }
+    if (user.isBanned) {
+        throw new errors_1.AppError(http_status_codes_1.StatusCodes.FORBIDDEN, "Account is banned");
     }
     const token = (0, jwt_1.signToken)({ sub: user.id, role: user.role });
     return {

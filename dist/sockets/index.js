@@ -5,6 +5,7 @@ const socket_io_1 = require("socket.io");
 const env_1 = require("../config/env");
 const jwt_1 = require("../modules/auth/jwt");
 const chat_handlers_1 = require("./chat.handlers");
+const prisma_1 = require("../lib/prisma");
 // Wire up Socket.io with auth middleware and event handlers.
 function initSocketServer(httpServer) {
     const io = new socket_io_1.Server(httpServer, {
@@ -14,7 +15,7 @@ function initSocketServer(httpServer) {
         },
     });
     // Require a valid JWT for every socket connection before joining rooms.
-    io.use((socket, next) => {
+    io.use(async (socket, next) => {
         try {
             const token = socket.handshake.auth?.token ??
                 socket.handshake.headers?.authorization?.split(" ")[1];
@@ -22,7 +23,17 @@ function initSocketServer(httpServer) {
                 return next(new Error("Authentication token missing"));
             }
             const payload = (0, jwt_1.verifyToken)(token);
-            socket.data.user = { id: payload.sub, role: payload.role };
+            const user = await prisma_1.prisma.user.findUnique({
+                where: { id: payload.sub },
+                select: { id: true, role: true, isBanned: true },
+            });
+            if (!user) {
+                return next(new Error("User not found"));
+            }
+            if (user.isBanned) {
+                return next(new Error("Account is banned"));
+            }
+            socket.data.user = { id: user.id, role: user.role };
             return next();
         }
         catch (error) {
