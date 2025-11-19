@@ -65,9 +65,13 @@ type CourseSummary = {
   id: string;
   code: string;
   title: string;
-  lecturer:
-    | { id: string; name: string; email: string; role: UserRole; department: string | null }
-    | null;
+  lecturer: {
+    id: string;
+    name: string;
+    email: string;
+    role: UserRole;
+    department: string | null;
+  } | null;
   _count: { enrollments: number };
 };
 
