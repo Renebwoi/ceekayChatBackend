@@ -7,6 +7,7 @@ import {
   pinCourseMessage,
   unpinCourseMessage,
   searchCourseMessagesHandler,
+  downloadCourseAttachment,
 } from "./message.controller";
 import { upload } from "../../middleware/upload";
 
@@ -18,6 +19,7 @@ messageRouter.use(authenticate);
 messageRouter.get("/", listCourseMessages);
 messageRouter.get("/search", searchCourseMessagesHandler);
 messageRouter.post("/", createCourseMessage);
+messageRouter.get("/:messageId/attachment", downloadCourseAttachment);
 messageRouter.post("/:messageId/pin", pinCourseMessage);
 messageRouter.delete("/:messageId/pin", unpinCourseMessage);
 

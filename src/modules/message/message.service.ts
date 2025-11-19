@@ -47,10 +47,19 @@ export type MessageWithRelations = Prisma.MessageGetPayload<{
 
 // Normalize optional relations and provide a consistent shape.
 export function serializeMessage(message: MessageWithRelations) {
+  const attachmentDownloadPath = message.attachment
+    ? `/api/courses/${message.courseId}/messages/${message.id}/attachment`
+    : null;
+
   return {
     ...message,
     senderId: message.senderId,
-    attachment: message.attachment ?? null,
+    attachment: message.attachment
+      ? {
+          ...message.attachment,
+          downloadUrl: attachmentDownloadPath,
+        }
+      : null,
     pinned: message.pinned ?? false,
     pinnedAt: message.pinnedAt ?? null,
     pinnedBy: message.pinnedBy ?? null,

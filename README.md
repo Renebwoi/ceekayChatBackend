@@ -99,6 +99,7 @@ prisma/
 - Course membership-aware message history (paginated)
 - Realtime Socket.io events per course room
 - File uploads streamed to Backblaze B2 with attachment records
+- Secure attachment downloads: `GET /api/courses/:courseId/messages/:messageId/attachment` returns a short-lived Backblaze-signed URL and message payloads surface an `attachment.downloadUrl` API path
 - Admin role can create/update/delete courses, manage enrollments, assign lecturers, and ban/unban users via `/api/admin`
 - Per-user unread tracking backed by `CourseReadState`; `/api/courses/my` includes `unreadCount` and `/api/courses/:courseId/read` marks a course chat as read
 - Users carry a `department` field (required for students/lecturers) surfaced on auth responses, course membership lists, and message payloads

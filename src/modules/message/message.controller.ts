@@ -13,7 +13,7 @@ import {
   searchCourseMessages,
 } from "./message.service";
 import { AppError } from "../../utils/errors";
-import { uploadToB2 } from "../../lib/b2";
+import { getSignedDownloadUrl, uploadToB2 } from "../../lib/b2";
 import { prisma } from "../../lib/prisma";
 import { MessageType, Prisma } from "@prisma/client";
 import {
@@ -23,6 +23,7 @@ import {
 } from "../../sockets/chat.handlers";
 import { UserRole } from "@prisma/client";
 import { Server } from "socket.io";
+import { appConfig } from "../../config/env";
 
 // Querystring guard for message pagination.
 const paginationSchema = z.object({
@@ -43,6 +44,19 @@ const createMessageSchema = z.object({
 const uploadBodySchema = z.object({
   content: z.string().optional(),
 });
+
+function getStoragePathFromUrl(url: string) {
+  const base = appConfig.b2.publicBaseUrl.replace(/\/+$/, "");
+
+  if (!url.startsWith(`${base}/`)) {
+    throw new AppError(
+      StatusCodes.INTERNAL_SERVER_ERROR,
+      "Attachment URL is not compatible with configured Backblaze public base URL"
+    );
+  }
+
+  return url.slice(base.length + 1);
+}
 
 // Helper to access the Socket.io instance injected by server.ts.
 function getSocketInstance(req: Request) {
@@ -100,6 +114,74 @@ export const searchCourseMessagesHandler = asyncHandler(
     const result = await searchCourseMessages(courseId, q, limit, cursor);
 
     res.status(StatusCodes.OK).json(result);
+  }
+);
+
+// GET /api/courses/:courseId/messages/:messageId/attachment
+export const downloadCourseAttachment = asyncHandler(
+  async (req: Request, res: Response) => {
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+    const courseId = req.params.courseId;
+    const messageId = req.params.messageId;
+
+    if (!userId) {
+      throw new AppError(
+        StatusCodes.UNAUTHORIZED,
+        "User missing from request context"
+      );
+    }
+
+    if (!courseId || !messageId) {
+      throw new AppError(
+        StatusCodes.BAD_REQUEST,
+        "Course ID and message ID are required"
+      );
+    }
+
+    const message = await prisma.message.findUnique({
+      where: { id: messageId },
+      select: {
+        id: true,
+        courseId: true,
+        attachment: {
+          select: {
+            fileName: true,
+            mimeType: true,
+            size: true,
+            url: true,
+          },
+        },
+      },
+    });
+
+    if (!message || message.courseId !== courseId) {
+      throw new AppError(StatusCodes.NOT_FOUND, "Message not found");
+    }
+
+    if (!message.attachment) {
+      throw new AppError(StatusCodes.NOT_FOUND, "Message has no attachment");
+    }
+
+    if (userRole === UserRole.ADMIN) {
+      await prisma.course.findUniqueOrThrow({
+        where: { id: courseId },
+        select: { id: true },
+      });
+    } else {
+      await ensureCourseMembership(courseId, userId);
+    }
+
+    const storagePath = getStoragePathFromUrl(message.attachment.url);
+    const signed = await getSignedDownloadUrl(storagePath);
+
+    res.status(StatusCodes.OK).json({
+      url: signed.url,
+      expiresIn: signed.expiresIn,
+      fileName: message.attachment.fileName,
+      mimeType: message.attachment.mimeType,
+      size: message.attachment.size,
+    });
   }
 );
 
