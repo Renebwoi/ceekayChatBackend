@@ -71,6 +71,10 @@ src/
       auth.routes.ts
       auth.service.ts
       jwt.ts
+    admin/
+      admin.controller.ts
+      admin.routes.ts
+      admin.service.ts
     user/
       user.controller.ts
       user.routes.ts
@@ -95,6 +99,7 @@ prisma/
 - Course membership-aware message history (paginated)
 - Realtime Socket.io events per course room
 - File uploads streamed to Backblaze B2 with attachment records
+- Admin role can create/update/delete courses, manage enrollments, assign lecturers, and ban/unban users via `/api/admin`
 
 ## Testing & quality
 

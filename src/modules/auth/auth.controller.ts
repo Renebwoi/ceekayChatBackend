@@ -10,7 +10,9 @@ const registerSchema = z.object({
   name: z.string().min(2),
   email: z.string().email(),
   password: z.string().min(8),
-  role: z.nativeEnum(UserRole),
+  role: z.nativeEnum(UserRole).refine((role) => role !== UserRole.ADMIN, {
+    message: "Self-service admin registration is not allowed",
+  }),
 });
 
 // Input validation for login body.

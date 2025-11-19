@@ -28,6 +28,13 @@ export async function registerUser(payload: RegisterDto) {
     throw new AppError(StatusCodes.CONFLICT, "Email already registered");
   }
 
+  if (payload.role === UserRole.ADMIN) {
+    throw new AppError(
+      StatusCodes.FORBIDDEN,
+      "Admin accounts must be created by an administrator"
+    );
+  }
+
   const hashedPassword = await bcrypt.hash(payload.password, SALT_ROUNDS);
   const user = await prisma.user.create({
     data: {
@@ -58,6 +65,10 @@ export async function loginUser(payload: LoginDto) {
   const passwordMatch = await bcrypt.compare(payload.password, user.password);
   if (!passwordMatch) {
     throw new AppError(StatusCodes.UNAUTHORIZED, "Invalid credentials");
+  }
+
+  if (user.isBanned) {
+    throw new AppError(StatusCodes.FORBIDDEN, "Account is banned");
   }
 
   const token = signToken({ sub: user.id, role: user.role });

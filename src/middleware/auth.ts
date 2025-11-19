@@ -3,28 +3,46 @@ import { StatusCodes } from "http-status-codes";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../utils/errors";
 import { UserRole } from "@prisma/client";
-import { verifyToken, TokenPayload } from "../modules/auth/jwt";
+import { verifyToken } from "../modules/auth/jwt";
+import { asyncHandler } from "../utils/asyncHandler";
 
 // Parse and verify Authorization headers, attaching the user to the request.
-export function authenticate(req: Request, _res: Response, next: NextFunction) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) {
-    return next(
-      new AppError(StatusCodes.UNAUTHORIZED, "Authorization header missing")
-    );
-  }
+export const authenticate = asyncHandler(
+  async (req: Request, _res: Response, next: NextFunction) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) {
+      throw new AppError(
+        StatusCodes.UNAUTHORIZED,
+        "Authorization header missing"
+      );
+    }
 
-  try {
-    const token = authHeader.split(" ")[1];
-    const payload = verifyToken(token) as TokenPayload;
-    req.user = { id: payload.sub, role: payload.role };
-    return next();
-  } catch (error) {
-    return next(
-      new AppError(StatusCodes.UNAUTHORIZED, "Invalid or expired token")
-    );
+    let userId: string;
+    try {
+      const token = authHeader.split(" ")[1];
+      const payload = verifyToken(token);
+      userId = payload.sub;
+    } catch {
+      throw new AppError(StatusCodes.UNAUTHORIZED, "Invalid or expired token");
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true, isBanned: true },
+    });
+
+    if (!user) {
+      throw new AppError(StatusCodes.UNAUTHORIZED, "User not found");
+    }
+
+    if (user.isBanned) {
+      throw new AppError(StatusCodes.FORBIDDEN, "Account is banned");
+    }
+
+    req.user = { id: user.id, role: user.role };
+    next();
   }
-}
+);
 
 // Gate a route to a single role or list of roles.
 export function requireRole(role: UserRole | UserRole[]) {

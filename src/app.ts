@@ -4,6 +4,7 @@ import { appConfig } from "./config/env";
 import { authRoutes } from "./modules/auth/auth.routes";
 import { userRoutes } from "./modules/user/user.routes";
 import { courseRoutes } from "./modules/course/course.routes";
+import { adminRoutes } from "./modules/admin/admin.routes";
 import { errorHandler } from "./middleware/errorHandler";
 
 // Build and configure the Express instance with all middleware/routes.
@@ -31,6 +32,7 @@ export function buildApp() {
   app.use("/api/auth", authRoutes);
   app.use("/api/users", userRoutes);
   app.use("/api/courses", courseRoutes);
+  app.use("/api/admin", adminRoutes);
 
   // Last middleware handles all errors bubbled up from routes.
   app.use(errorHandler);
