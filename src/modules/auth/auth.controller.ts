@@ -13,6 +13,7 @@ const registerSchema = z.object({
   role: z.nativeEnum(UserRole).refine((role) => role !== UserRole.ADMIN, {
     message: "Self-service admin registration is not allowed",
   }),
+  department: z.string().trim().min(1, "Department is required"),
 });
 
 // Input validation for login body.

@@ -23,6 +23,10 @@ async function registerUser(payload) {
     if (payload.role === client_1.UserRole.ADMIN) {
         throw new errors_1.AppError(http_status_codes_1.StatusCodes.FORBIDDEN, "Admin accounts must be created by an administrator");
     }
+    const department = payload.department.trim();
+    if (!department) {
+        throw new errors_1.AppError(http_status_codes_1.StatusCodes.BAD_REQUEST, "Department is required");
+    }
     const hashedPassword = await bcrypt_1.default.hash(payload.password, SALT_ROUNDS);
     const user = await prisma_1.prisma.user.create({
         data: {
@@ -30,6 +34,7 @@ async function registerUser(payload) {
             email: payload.email,
             password: hashedPassword,
             role: payload.role,
+            department,
         },
     });
     const token = (0, jwt_1.signToken)({ sub: user.id, role: user.role });

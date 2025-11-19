@@ -20,11 +20,25 @@ exports.getMyCourses = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
         },
         include: {
             lecturer: {
-                select: { id: true, name: true, email: true },
+                select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    role: true,
+                    department: true,
+                },
             },
             enrollments: {
                 select: {
-                    user: { select: { id: true, name: true, email: true, role: true } },
+                    user: {
+                        select: {
+                            id: true,
+                            name: true,
+                            email: true,
+                            role: true,
+                            department: true,
+                        },
+                    },
                 },
             },
             readStates: {

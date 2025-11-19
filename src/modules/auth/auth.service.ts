@@ -12,6 +12,7 @@ export interface RegisterDto {
   email: string;
   password: string;
   role: UserRole;
+  department: string;
 }
 
 export interface LoginDto {
@@ -35,6 +36,11 @@ export async function registerUser(payload: RegisterDto) {
     );
   }
 
+  const department = payload.department.trim();
+  if (!department) {
+    throw new AppError(StatusCodes.BAD_REQUEST, "Department is required");
+  }
+
   const hashedPassword = await bcrypt.hash(payload.password, SALT_ROUNDS);
   const user = await prisma.user.create({
     data: {
@@ -42,6 +48,7 @@ export async function registerUser(payload: RegisterDto) {
       email: payload.email,
       password: hashedPassword,
       role: payload.role,
+      department,
     },
   });
 

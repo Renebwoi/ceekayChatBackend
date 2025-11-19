@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.messageSelect = void 0;
 exports.serializeMessage = serializeMessage;
 exports.fetchCourseMessages = fetchCourseMessages;
+exports.searchCourseMessages = searchCourseMessages;
 exports.createTextMessage = createTextMessage;
 exports.pinMessage = pinMessage;
 exports.unpinMessage = unpinMessage;
@@ -23,14 +24,18 @@ exports.messageSelect = {
         select: {
             id: true,
             name: true,
+            email: true,
             role: true,
+            department: true,
         },
     },
     pinnedBy: {
         select: {
             id: true,
             name: true,
+            email: true,
             role: true,
+            department: true,
         },
     },
     attachment: {
@@ -58,6 +63,38 @@ function serializeMessage(message) {
 async function fetchCourseMessages(courseId, limit = 20, cursor) {
     const messages = await prisma_1.prisma.message.findMany({
         where: { courseId },
+        orderBy: { createdAt: "asc" },
+        take: limit,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        select: exports.messageSelect,
+    });
+    const nextCursor = messages.length === limit ? messages[messages.length - 1].id : null;
+    return {
+        messages: messages.map(serializeMessage),
+        nextCursor,
+    };
+}
+async function searchCourseMessages(courseId, term, limit = 20, cursor) {
+    const messages = await prisma_1.prisma.message.findMany({
+        where: {
+            courseId,
+            OR: [
+                {
+                    content: {
+                        contains: term,
+                        mode: "insensitive",
+                    },
+                },
+                {
+                    attachment: {
+                        fileName: {
+                            contains: term,
+                            mode: "insensitive",
+                        },
+                    },
+                },
+            ],
+        },
         orderBy: { createdAt: "asc" },
         take: limit,
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),

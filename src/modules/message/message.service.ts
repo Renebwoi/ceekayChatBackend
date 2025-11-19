@@ -16,14 +16,18 @@ export const messageSelect = {
     select: {
       id: true,
       name: true,
+      email: true,
       role: true,
+      department: true,
     },
   },
   pinnedBy: {
     select: {
       id: true,
       name: true,
+      email: true,
       role: true,
+      department: true,
     },
   },
   attachment: {
@@ -61,6 +65,47 @@ export async function fetchCourseMessages(
 ) {
   const messages = await prisma.message.findMany({
     where: { courseId },
+    orderBy: { createdAt: "asc" },
+    take: limit,
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    select: messageSelect,
+  });
+
+  const nextCursor =
+    messages.length === limit ? messages[messages.length - 1].id : null;
+
+  return {
+    messages: messages.map(serializeMessage),
+    nextCursor,
+  };
+}
+
+export async function searchCourseMessages(
+  courseId: string,
+  term: string,
+  limit = 20,
+  cursor?: string
+) {
+  const messages = await prisma.message.findMany({
+    where: {
+      courseId,
+      OR: [
+        {
+          content: {
+            contains: term,
+            mode: "insensitive",
+          },
+        },
+        {
+          attachment: {
+            fileName: {
+              contains: term,
+              mode: "insensitive",
+            },
+          },
+        },
+      ],
+    },
     orderBy: { createdAt: "asc" },
     take: limit,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),

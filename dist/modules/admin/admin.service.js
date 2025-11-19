@@ -17,24 +17,52 @@ const prisma_1 = require("../../lib/prisma");
 const errors_1 = require("../../utils/errors");
 const courseInclude = {
     lecturer: {
-        select: { id: true, name: true, email: true, role: true },
+        select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            department: true,
+        },
     },
     enrollments: {
         select: {
             id: true,
-            user: { select: { id: true, name: true, email: true, role: true } },
+            user: {
+                select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    role: true,
+                    department: true,
+                },
+            },
         },
     },
 };
 const enrollmentInclude = {
-    user: { select: { id: true, name: true, email: true, role: true } },
+    user: {
+        select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            department: true,
+        },
+    },
 };
 const courseSummarySelect = {
     id: true,
     code: true,
     title: true,
     lecturer: {
-        select: { id: true, name: true, email: true },
+        select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            department: true,
+        },
     },
     _count: {
         select: {
@@ -183,7 +211,13 @@ async function addCourseEnrollment(courseId, userId) {
 async function listLecturers() {
     const lecturers = await prisma_1.prisma.user.findMany({
         where: { role: client_1.UserRole.LECTURER, isBanned: false },
-        select: { id: true, name: true, email: true },
+        select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            department: true,
+        },
         orderBy: { name: "asc" },
     });
     return lecturers;
@@ -191,13 +225,22 @@ async function listLecturers() {
 async function listStudents() {
     const students = (await prisma_1.prisma.user.findMany({
         where: { role: client_1.UserRole.STUDENT },
-        select: { id: true, name: true, email: true, isBanned: true },
+        select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            department: true,
+            isBanned: true,
+        },
         orderBy: { name: "asc" },
     }));
     return students.map((student) => ({
         id: student.id,
         name: student.name,
         email: student.email,
+        role: student.role,
+        department: student.department,
         banned: student.isBanned,
     }));
 }
@@ -208,7 +251,15 @@ async function getCourseRoster(courseId) {
             id: true,
             enrollments: {
                 select: {
-                    user: { select: { id: true, name: true, email: true } },
+                    user: {
+                        select: {
+                            id: true,
+                            name: true,
+                            email: true,
+                            role: true,
+                            department: true,
+                        },
+                    },
                 },
                 orderBy: { user: { name: "asc" } },
             },
@@ -247,6 +298,7 @@ async function setUserBanStatus(userId, isBanned) {
                 name: true,
                 email: true,
                 role: true,
+                department: true,
                 isBanned: true,
                 createdAt: true,
                 updatedAt: true,

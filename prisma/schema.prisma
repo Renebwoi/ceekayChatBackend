@@ -19,20 +19,21 @@ enum MessageType {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  name      String
-  role      UserRole
-  isBanned  Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                String            @id @default(cuid())
+  email             String            @unique
+  password          String
+  name              String
+  role              UserRole
+  department        String?
+  isBanned          Boolean           @default(false)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 
-  enrollments    Enrollment[]
-  courses        Course[]     @relation("CourseLecturer")
-  messages       Message[]
-  pinnedMessages Message[]    @relation("MessagePinnedBy")
-  courseReadStates CourseReadState[]
+  enrollments       Enrollment[]
+  courses           Course[]          @relation("CourseLecturer")
+  messages          Message[]
+  pinnedMessages    Message[]         @relation("MessagePinnedBy")
+  courseReadStates  CourseReadState[]
 }
 
 model Course {

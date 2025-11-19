@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.unpinCourseMessage = exports.pinCourseMessage = exports.uploadCourseFile = exports.createCourseMessage = exports.listCourseMessages = void 0;
+exports.unpinCourseMessage = exports.pinCourseMessage = exports.uploadCourseFile = exports.createCourseMessage = exports.searchCourseMessagesHandler = exports.listCourseMessages = void 0;
 const http_status_codes_1 = require("http-status-codes");
 const zod_1 = require("zod");
 const asyncHandler_1 = require("../../utils/asyncHandler");
@@ -11,10 +11,14 @@ const b2_1 = require("../../lib/b2");
 const prisma_1 = require("../../lib/prisma");
 const client_1 = require("@prisma/client");
 const chat_handlers_1 = require("../../sockets/chat.handlers");
+const client_2 = require("@prisma/client");
 // Querystring guard for message pagination.
 const paginationSchema = zod_1.z.object({
     limit: zod_1.z.coerce.number().min(1).max(100).default(20),
     cursor: zod_1.z.string().optional(),
+});
+const searchQuerySchema = paginationSchema.extend({
+    q: zod_1.z.string().trim().min(1, "Search term is required"),
 });
 // POST payload guard for message creation.
 const createMessageSchema = zod_1.z.object({
@@ -38,6 +42,30 @@ exports.listCourseMessages = (0, asyncHandler_1.asyncHandler)(async (req, res) =
     await (0, auth_1.ensureCourseMembership)(courseId, userId);
     const { limit, cursor } = paginationSchema.parse(req.query);
     const result = await (0, message_service_1.fetchCourseMessages)(courseId, limit, cursor);
+    res.status(http_status_codes_1.StatusCodes.OK).json(result);
+});
+// GET /api/courses/:courseId/messages/search
+exports.searchCourseMessagesHandler = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+    const courseId = req.params.courseId;
+    if (!userId) {
+        throw new errors_1.AppError(http_status_codes_1.StatusCodes.UNAUTHORIZED, "User missing from request context");
+    }
+    if (!courseId) {
+        throw new errors_1.AppError(http_status_codes_1.StatusCodes.BAD_REQUEST, "Course ID is required");
+    }
+    const { q, limit, cursor } = searchQuerySchema.parse(req.query);
+    if (userRole === client_2.UserRole.ADMIN) {
+        await prisma_1.prisma.course.findUniqueOrThrow({
+            where: { id: courseId },
+            select: { id: true },
+        });
+    }
+    else {
+        await (0, auth_1.ensureCourseMembership)(courseId, userId);
+    }
+    const result = await (0, message_service_1.searchCourseMessages)(courseId, q, limit, cursor);
     res.status(http_status_codes_1.StatusCodes.OK).json(result);
 });
 // POST /api/courses/:courseId/messages (text only)

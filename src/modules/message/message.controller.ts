@@ -10,6 +10,7 @@ import {
   serializeMessage,
   pinMessage,
   unpinMessage,
+  searchCourseMessages,
 } from "./message.service";
 import { AppError } from "../../utils/errors";
 import { uploadToB2 } from "../../lib/b2";
@@ -20,12 +21,17 @@ import {
   broadcastCourseMessagePinned,
   broadcastCourseMessageUnpinned,
 } from "../../sockets/chat.handlers";
+import { UserRole } from "@prisma/client";
 import { Server } from "socket.io";
 
 // Querystring guard for message pagination.
 const paginationSchema = z.object({
   limit: z.coerce.number().min(1).max(100).default(20),
   cursor: z.string().optional(),
+});
+
+const searchQuerySchema = paginationSchema.extend({
+  q: z.string().trim().min(1, "Search term is required"),
 });
 
 // POST payload guard for message creation.
@@ -58,6 +64,41 @@ export const listCourseMessages = asyncHandler(
     await ensureCourseMembership(courseId, userId);
     const { limit, cursor } = paginationSchema.parse(req.query);
     const result = await fetchCourseMessages(courseId, limit, cursor);
+    res.status(StatusCodes.OK).json(result);
+  }
+);
+
+// GET /api/courses/:courseId/messages/search
+export const searchCourseMessagesHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+    const courseId = req.params.courseId;
+
+    if (!userId) {
+      throw new AppError(
+        StatusCodes.UNAUTHORIZED,
+        "User missing from request context"
+      );
+    }
+
+    if (!courseId) {
+      throw new AppError(StatusCodes.BAD_REQUEST, "Course ID is required");
+    }
+
+    const { q, limit, cursor } = searchQuerySchema.parse(req.query);
+
+    if (userRole === UserRole.ADMIN) {
+      await prisma.course.findUniqueOrThrow({
+        where: { id: courseId },
+        select: { id: true },
+      });
+    } else {
+      await ensureCourseMembership(courseId, userId);
+    }
+
+    const result = await searchCourseMessages(courseId, q, limit, cursor);
+
     res.status(StatusCodes.OK).json(result);
   }
 );

@@ -6,6 +6,7 @@ import {
   uploadCourseFile,
   pinCourseMessage,
   unpinCourseMessage,
+  searchCourseMessagesHandler,
 } from "./message.controller";
 import { upload } from "../../middleware/upload";
 
@@ -15,6 +16,7 @@ const uploadRouter = Router({ mergeParams: true });
 
 messageRouter.use(authenticate);
 messageRouter.get("/", listCourseMessages);
+messageRouter.get("/search", searchCourseMessagesHandler);
 messageRouter.post("/", createCourseMessage);
 messageRouter.post("/:messageId/pin", pinCourseMessage);
 messageRouter.delete("/:messageId/pin", unpinCourseMessage);

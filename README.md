@@ -101,6 +101,8 @@ prisma/
 - File uploads streamed to Backblaze B2 with attachment records
 - Admin role can create/update/delete courses, manage enrollments, assign lecturers, and ban/unban users via `/api/admin`
 - Per-user unread tracking backed by `CourseReadState`; `/api/courses/my` includes `unreadCount` and `/api/courses/:courseId/read` marks a course chat as read
+- Users carry a `department` field (required for students/lecturers) surfaced on auth responses, course membership lists, and message payloads
+- Search-ready messaging: `GET /api/courses/:courseId/messages/search` performs case-insensitive queries over message text and attachment filenames with cursor pagination
 
 ## Testing & quality
 
@@ -118,3 +120,5 @@ prisma/
 - `CourseReadState` Prisma model records the last time each user opened a course chat
 - `GET /api/courses/my` now includes an `unreadCount` per course derived from `CourseReadState`
 - `POST /api/courses/:courseId/read` upserts the read state (no Socket.io side effects); call it when a user views a course chat
+- User records include a nullable `department`; registration requires it for students/lecturers and all serialized user payloads now expose `{ id, name, email, role, department }`
+- `GET /api/courses/:courseId/messages/search?q=<term>&cursor=<id?>` returns the same message shape as history while filtering by content or attachment names (requires course membership or admin access)

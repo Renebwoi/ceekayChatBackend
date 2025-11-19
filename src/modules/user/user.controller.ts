@@ -18,6 +18,7 @@ export const getCurrentUser = asyncHandler(
         name: true,
         email: true,
         role: true,
+  department: true,
         isBanned: true,
         createdAt: true,
         updatedAt: true,

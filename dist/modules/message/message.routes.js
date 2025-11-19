@@ -12,6 +12,7 @@ const uploadRouter = (0, express_1.Router)({ mergeParams: true });
 exports.uploadRouter = uploadRouter;
 messageRouter.use(auth_1.authenticate);
 messageRouter.get("/", message_controller_1.listCourseMessages);
+messageRouter.get("/search", message_controller_1.searchCourseMessagesHandler);
 messageRouter.post("/", message_controller_1.createCourseMessage);
 messageRouter.post("/:messageId/pin", message_controller_1.pinCourseMessage);
 messageRouter.delete("/:messageId/pin", message_controller_1.unpinCourseMessage);

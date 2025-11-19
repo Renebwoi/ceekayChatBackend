@@ -5,18 +5,40 @@ import { AppError } from "../../utils/errors";
 
 const courseInclude = {
   lecturer: {
-    select: { id: true, name: true, email: true, role: true },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      department: true,
+    },
   },
   enrollments: {
     select: {
       id: true,
-      user: { select: { id: true, name: true, email: true, role: true } },
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          department: true,
+        },
+      },
     },
   },
 } as const;
 
 const enrollmentInclude = {
-  user: { select: { id: true, name: true, email: true, role: true } },
+  user: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      department: true,
+    },
+  },
 } as const;
 
 const courseSummarySelect = {
@@ -24,7 +46,13 @@ const courseSummarySelect = {
   code: true,
   title: true,
   lecturer: {
-    select: { id: true, name: true, email: true },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      department: true,
+    },
   },
   _count: {
     select: {
@@ -37,7 +65,9 @@ type CourseSummary = {
   id: string;
   code: string;
   title: string;
-  lecturer: { id: string; name: string; email: string } | null;
+  lecturer:
+    | { id: string; name: string; email: string; role: UserRole; department: string | null }
+    | null;
   _count: { enrollments: number };
 };
 
@@ -45,13 +75,21 @@ type StudentRow = {
   id: string;
   name: string;
   email: string;
+  role: UserRole;
+  department: string | null;
   isBanned: boolean;
 };
 
 type CourseRoster = {
   id: string;
   enrollments: Array<{
-    user: { id: string; name: string; email: string };
+    user: {
+      id: string;
+      name: string;
+      email: string;
+      role: UserRole;
+      department: string | null;
+    };
   }>;
 };
 
@@ -248,7 +286,13 @@ export async function addCourseEnrollment(courseId: string, userId: string) {
 export async function listLecturers() {
   const lecturers = await prisma.user.findMany({
     where: { role: UserRole.LECTURER, isBanned: false },
-    select: { id: true, name: true, email: true },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      department: true,
+    },
     orderBy: { name: "asc" },
   });
 
@@ -258,7 +302,14 @@ export async function listLecturers() {
 export async function listStudents() {
   const students = (await prisma.user.findMany({
     where: { role: UserRole.STUDENT },
-    select: { id: true, name: true, email: true, isBanned: true },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      department: true,
+      isBanned: true,
+    },
     orderBy: { name: "asc" },
   })) as StudentRow[];
 
@@ -266,6 +317,8 @@ export async function listStudents() {
     id: student.id,
     name: student.name,
     email: student.email,
+    role: student.role,
+    department: student.department,
     banned: student.isBanned,
   }));
 }
@@ -277,7 +330,15 @@ export async function getCourseRoster(courseId: string) {
       id: true,
       enrollments: {
         select: {
-          user: { select: { id: true, name: true, email: true } },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+              department: true,
+            },
+          },
         },
         orderBy: { user: { name: "asc" } },
       },
@@ -319,6 +380,7 @@ export async function setUserBanStatus(userId: string, isBanned: boolean) {
         name: true,
         email: true,
         role: true,
+        department: true,
         isBanned: true,
         createdAt: true,
         updatedAt: true,
