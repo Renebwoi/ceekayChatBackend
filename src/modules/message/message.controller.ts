@@ -6,20 +6,20 @@ import { ensureCourseMembership } from "../../middleware/auth";
 import {
   fetchCourseMessages,
   createTextMessage,
-  messageSelect,
-  serializeMessage,
   pinMessage,
   unpinMessage,
   searchCourseMessages,
+  fetchMessageReplies,
+  createFileMessage,
 } from "./message.service";
 import { AppError } from "../../utils/errors";
 import { getSignedDownloadUrl, uploadToB2 } from "../../lib/b2";
 import { prisma } from "../../lib/prisma";
-import { MessageType, Prisma } from "@prisma/client";
 import {
   broadcastCourseMessage,
   broadcastCourseMessagePinned,
   broadcastCourseMessageUnpinned,
+  broadcastCourseReplySummary,
 } from "../../sockets/chat.handlers";
 import { UserRole } from "@prisma/client";
 import { Server } from "socket.io";
@@ -38,11 +38,13 @@ const searchQuerySchema = paginationSchema.extend({
 // POST payload guard for message creation.
 const createMessageSchema = z.object({
   content: z.string().min(1),
+  parentMessageId: z.string().trim().min(1).optional(),
 });
 
 // Optional caption text for file uploads.
 const uploadBodySchema = z.object({
   content: z.string().optional(),
+  parentMessageId: z.string().trim().min(1).optional(),
 });
 
 function getStoragePathFromUrl(url: string) {
@@ -112,6 +114,60 @@ export const searchCourseMessagesHandler = asyncHandler(
     }
 
     const result = await searchCourseMessages(courseId, q, limit, cursor);
+
+    res.status(StatusCodes.OK).json(result);
+  }
+);
+
+// GET /api/courses/:courseId/messages/:messageId/replies
+export const listMessageReplies = asyncHandler(
+  async (req: Request, res: Response) => {
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+    const courseId = req.params.courseId;
+    const messageId = req.params.messageId;
+
+    if (!userId) {
+      throw new AppError(
+        StatusCodes.UNAUTHORIZED,
+        "User missing from request context"
+      );
+    }
+
+    if (!courseId || !messageId) {
+      throw new AppError(
+        StatusCodes.BAD_REQUEST,
+        "Course ID and message ID are required"
+      );
+    }
+
+    if (userRole === UserRole.ADMIN) {
+      await prisma.course.findUniqueOrThrow({
+        where: { id: courseId },
+        select: { id: true },
+      });
+    } else {
+      await ensureCourseMembership(courseId, userId);
+    }
+
+    const parentMessage = await prisma.message.findUnique({
+      where: { id: messageId },
+      select: { id: true, courseId: true, parentMessageId: true },
+    });
+
+    if (!parentMessage || parentMessage.courseId !== courseId) {
+      throw new AppError(StatusCodes.NOT_FOUND, "Message not found");
+    }
+
+    if (parentMessage.parentMessageId) {
+      throw new AppError(
+        StatusCodes.BAD_REQUEST,
+        "Replies can only be fetched for top-level messages"
+      );
+    }
+
+    const { limit, cursor } = paginationSchema.parse(req.query);
+    const result = await fetchMessageReplies(courseId, messageId, limit, cursor);
 
     res.status(StatusCodes.OK).json(result);
   }
@@ -198,12 +254,20 @@ export const createCourseMessage = asyncHandler(
     }
 
     await ensureCourseMembership(courseId, userId);
-    const { content } = createMessageSchema.parse(req.body);
-    const message = await createTextMessage(courseId, userId, content);
+    const { content, parentMessageId } = createMessageSchema.parse(req.body);
+    const result = await createTextMessage(
+      courseId,
+      userId,
+      content,
+      parentMessageId ?? null
+    );
 
-    broadcastCourseMessage(getSocketInstance(req), message);
+    broadcastCourseMessage(getSocketInstance(req), result.message);
+    if (result.parentUpdate) {
+      broadcastCourseReplySummary(getSocketInstance(req), result.parentUpdate);
+    }
 
-    res.status(StatusCodes.CREATED).json(message);
+    res.status(StatusCodes.CREATED).json(result.message);
   }
 );
 
@@ -219,8 +283,8 @@ export const uploadCourseFile = asyncHandler(
       );
     }
 
-    await ensureCourseMembership(courseId, userId);
-    const body = uploadBodySchema.parse(req.body ?? {});
+  await ensureCourseMembership(courseId, userId);
+  const body = uploadBodySchema.parse(req.body ?? {});
 
     if (!req.file) {
       throw new AppError(StatusCodes.BAD_REQUEST, "File is required");
@@ -233,39 +297,25 @@ export const uploadCourseFile = asyncHandler(
       mimeType: req.file.mimetype,
     });
 
-    const message = await prisma.$transaction(
-      async (tx: Prisma.TransactionClient) => {
-        const createdMessage = await tx.message.create({
-          data: {
-            courseId,
-            senderId: userId,
-            content: body.content ?? null,
-            type: MessageType.FILE,
-          },
-        });
+    const result = await createFileMessage({
+      courseId,
+      senderId: userId,
+      content: body.content ?? null,
+      parentMessageId: body.parentMessageId ?? null,
+      attachment: {
+        fileName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        size: req.file.size,
+        url: uploadResult.fileUrl,
+      },
+    });
 
-        await tx.attachment.create({
-          data: {
-            messageId: createdMessage.id,
-            fileName: req.file!.originalname,
-            mimeType: req.file!.mimetype,
-            size: req.file!.size,
-            url: uploadResult.fileUrl,
-          },
-        });
+    broadcastCourseMessage(getSocketInstance(req), result.message);
+    if (result.parentUpdate) {
+      broadcastCourseReplySummary(getSocketInstance(req), result.parentUpdate);
+    }
 
-        const hydrated = await tx.message.findUniqueOrThrow({
-          where: { id: createdMessage.id },
-          select: messageSelect,
-        });
-
-        return serializeMessage(hydrated);
-      }
-    );
-
-    broadcastCourseMessage(getSocketInstance(req), message);
-
-    res.status(StatusCodes.CREATED).json(message);
+    res.status(StatusCodes.CREATED).json(result.message);
   }
 );
 

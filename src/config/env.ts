@@ -22,7 +22,7 @@ const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
   console.error(
-    "❌ Invalid environment configuration",
+    " Invalid environment configuration",
     parsed.error.flatten().fieldErrors
   );
   throw new Error("Invalid environment variables. Check your .env file");

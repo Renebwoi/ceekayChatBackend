@@ -59,14 +59,13 @@ export const getMyCourses = asyncHandler(
     const toCourseResponse = async (course: CourseWithExtras) => {
       const lastReadAt = course.readStates[0]?.lastReadAt ?? null;
 
-      const unreadCount = lastReadAt
-        ? await prisma.message.count({
-            where: {
-              courseId: course.id,
-              createdAt: { gt: lastReadAt },
-            },
-          })
-        : course._count.messages;
+      const unreadCount = await prisma.message.count({
+        where: {
+          courseId: course.id,
+          deleted: false,
+          ...(lastReadAt ? { createdAt: { gt: lastReadAt } } : {}),
+        },
+      });
 
       const { readStates, _count, ...rest } = course;
       return { ...rest, unreadCount };

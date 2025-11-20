@@ -69,11 +69,18 @@ model Message {
   pinned     Boolean     @default(false)
   pinnedAt   DateTime?
   pinnedById String?
+  parentMessageId String?
+  deleted    Boolean     @default(false)
 
   course     Course      @relation(fields: [courseId], references: [id])
   sender     User        @relation(fields: [senderId], references: [id])
   pinnedBy   User?       @relation("MessagePinnedBy", fields: [pinnedById], references: [id])
+  parent     Message?    @relation("MessageReplies", fields: [parentMessageId], references: [id])
+  replies    Message[]   @relation("MessageReplies")
   attachment Attachment?
+
+  @@index([courseId, createdAt])
+  @@index([courseId, parentMessageId, createdAt])
 }
 
 model Attachment {

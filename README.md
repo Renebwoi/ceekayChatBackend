@@ -100,6 +100,7 @@ prisma/
 - Realtime Socket.io events per course room
 - File uploads streamed to Backblaze B2 with attachment records
 - Secure attachment downloads: `GET /api/courses/:courseId/messages/:messageId/attachment` returns a short-lived Backblaze-signed URL and message payloads surface an `attachment.downloadUrl` API path
+- Threaded replies: messages expose `parentMessageId`, `replyCount`, and `latestReply`; replies are posted via `POST /api/courses/:courseId/messages` with `parentMessageId` and fetched at `/api/courses/:courseId/messages/:messageId/replies`
 - Admin role can create/update/delete courses, manage enrollments, assign lecturers, and ban/unban users via `/api/admin`
 - Per-user unread tracking backed by `CourseReadState`; `/api/courses/my` includes `unreadCount` and `/api/courses/:courseId/read` marks a course chat as read
 - Users carry a `department` field (required for students/lecturers) surfaced on auth responses, course membership lists, and message payloads
@@ -108,7 +109,7 @@ prisma/
 ## Testing & quality
 
 - `npm run lint` (TypeScript no-emit check)
-- Add Jest or integration tests as the project evolves
+- `npm run test` (Vitest suite covering threaded replies and socket payloads)
 
 ## Deployment
 
@@ -123,3 +124,10 @@ prisma/
 - `POST /api/courses/:courseId/read` upserts the read state (no Socket.io side effects); call it when a user views a course chat
 - User records include a nullable `department`; registration requires it for students/lecturers and all serialized user payloads now expose `{ id, name, email, role, department }`
 - `GET /api/courses/:courseId/messages/search?q=<term>&cursor=<id?>` returns the same message shape as history while filtering by content or attachment names (requires course membership or admin access)
+
+## Threaded replies
+
+- Every message now includes `parentMessageId`, `replyCount`, and `latestReply` metadata; replies always have `replyCount = 0` and `latestReply = null`.
+- Submit replies by passing `parentMessageId` to `POST /api/courses/:courseId/messages` (text) or `/api/courses/:courseId/uploads` (files). The backend validates the parent belongs to the same course and forbids multi-level nesting.
+- Fetch a thread with `GET /api/courses/:courseId/messages/:messageId/replies?cursor=<id?>`; results use the standard message shape with chronological ordering and pagination.
+- Socket listeners receive `course_message:new` for both top-level messages and replies; whenever replies change, `course_message:reply_count` broadcasts `{ courseId, messageId, replyCount, latestReply }` so clients can update thread previews.
