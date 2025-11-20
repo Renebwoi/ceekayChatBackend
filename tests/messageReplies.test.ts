@@ -1,6 +1,9 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { MessageType, UserRole } from "@prisma/client";
-import type { ReplySummaryPayload, SerializedMessage } from "../src/modules/message/message.service";
+import type {
+  ReplySummaryPayload,
+  SerializedMessage,
+} from "../src/modules/message/message.service";
 
 interface UserRecord {
   id: string;
@@ -155,7 +158,10 @@ function matchesWhere(record: MessageRecord, where: Record<string, any>) {
     if (constraint === null && record.parentMessageId !== null) {
       return false;
     }
-    if (typeof constraint === "string" && record.parentMessageId !== constraint) {
+    if (
+      typeof constraint === "string" &&
+      record.parentMessageId !== constraint
+    ) {
       return false;
     }
     if (
@@ -201,10 +207,13 @@ function sortRecords(records: MessageRecord[], orderBy?: any) {
 }
 
 const fakePrisma = {
-  $transaction: vi.fn(async (cb: (client: typeof fakePrisma) => any) => cb(fakePrisma)),
+  $transaction: vi.fn(async (cb: (client: typeof fakePrisma) => any) =>
+    cb(fakePrisma)
+  ),
   message: {
     findUnique: vi.fn(async ({ where, select }: any) => {
-      const record = state.messages.get(where.id) ??
+      const record =
+        state.messages.get(where.id) ??
         state.replies.find((item) => item.id === where.id) ??
         null;
       if (!record) return null;
@@ -246,12 +255,22 @@ const fakePrisma = {
 
       if (Object.prototype.hasOwnProperty.call(where, "parentMessageId")) {
         const constraint = where.parentMessageId;
-        if (constraint && typeof constraint === "object" && Array.isArray(constraint.in)) {
-          records = state.replies.filter((item) => constraint.in.includes(item.parentMessageId));
+        if (
+          constraint &&
+          typeof constraint === "object" &&
+          Array.isArray(constraint.in)
+        ) {
+          records = state.replies.filter((item) =>
+            constraint.in.includes(item.parentMessageId)
+          );
         } else if (typeof constraint === "string") {
-          records = state.replies.filter((item) => item.parentMessageId === constraint);
+          records = state.replies.filter(
+            (item) => item.parentMessageId === constraint
+          );
         } else if (constraint === null) {
-          records = [...state.messages.values()].filter((item) => item.parentMessageId === null);
+          records = [...state.messages.values()].filter(
+            (item) => item.parentMessageId === null
+          );
         } else {
           records = [...state.replies];
         }
@@ -294,7 +313,9 @@ const fakePrisma = {
         .map((id) => ({
           parentMessageId: id,
           _count: {
-            parentMessageId: state.replies.filter((reply) => reply.parentMessageId === id).length,
+            parentMessageId: state.replies.filter(
+              (reply) => reply.parentMessageId === id
+            ).length,
           },
         }))
         .filter((row) => row._count.parentMessageId > 0);
@@ -306,7 +327,8 @@ const fakePrisma = {
     updateMany: vi.fn(async () => ({ count: 0 })),
     update: vi.fn(async ({ where, data, select }: any) => {
       const record =
-        state.messages.get(where.id) || state.replies.find((item) => item.id === where.id);
+        state.messages.get(where.id) ||
+        state.replies.find((item) => item.id === where.id);
       if (!record) {
         throw new Error("Not found");
       }
@@ -314,8 +336,8 @@ const fakePrisma = {
       return select ? applySelect(record, select) : { ...record };
     }),
     findFirst: vi.fn(async ({ where, select }: any) => {
-      const record = [...state.messages.values(), ...state.replies].find((item) =>
-        matchesWhere(item, where)
+      const record = [...state.messages.values(), ...state.replies].find(
+        (item) => matchesWhere(item, where)
       );
       if (!record) return null;
       return select ? applySelect(record, select) : { ...record };
@@ -340,7 +362,10 @@ let createTextMessage: (
   senderId: string,
   content: string,
   parentMessageId?: string | null
-) => Promise<{ message: SerializedMessage; parentUpdate?: ReplySummaryPayload }>;
+) => Promise<{
+  message: SerializedMessage;
+  parentUpdate?: ReplySummaryPayload;
+}>;
 let fetchMessageReplies: (
   courseId: string,
   messageId: string,
@@ -351,10 +376,7 @@ let broadcastCourseReplySummary: (
   io: any,
   payload: ReplySummaryPayload
 ) => void;
-let broadcastCourseMessage: (
-  io: any,
-  message: SerializedMessage
-) => void;
+let broadcastCourseMessage: (io: any, message: SerializedMessage) => void;
 
 beforeAll(async () => {
   const messageService = await import("../src/modules/message/message.service");

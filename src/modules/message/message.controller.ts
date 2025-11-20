@@ -167,7 +167,12 @@ export const listMessageReplies = asyncHandler(
     }
 
     const { limit, cursor } = paginationSchema.parse(req.query);
-    const result = await fetchMessageReplies(courseId, messageId, limit, cursor);
+    const result = await fetchMessageReplies(
+      courseId,
+      messageId,
+      limit,
+      cursor
+    );
 
     res.status(StatusCodes.OK).json(result);
   }
@@ -283,8 +288,8 @@ export const uploadCourseFile = asyncHandler(
       );
     }
 
-  await ensureCourseMembership(courseId, userId);
-  const body = uploadBodySchema.parse(req.body ?? {});
+    await ensureCourseMembership(courseId, userId);
+    const body = uploadBodySchema.parse(req.body ?? {});
 
     if (!req.file) {
       throw new AppError(StatusCodes.BAD_REQUEST, "File is required");

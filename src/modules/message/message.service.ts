@@ -167,26 +167,21 @@ async function fetchReplySummaries(
       parentMessageId: { in: ids },
       deleted: false,
     },
-    orderBy: [
-      { parentMessageId: "asc" },
-      { createdAt: "desc" },
-    ],
-    distinct: [
-      Prisma.MessageScalarFieldEnum.parentMessageId,
-    ],
+    orderBy: [{ parentMessageId: "asc" }, { createdAt: "desc" }],
+    distinct: [Prisma.MessageScalarFieldEnum.parentMessageId],
     select: latestReplySelect,
   });
 
-  latestReplies.forEach((
-    reply: Prisma.MessageGetPayload<{ select: typeof latestReplySelect }>
-  ) => {
-    const parentId = reply.parentMessageId;
-    if (!parentId) return;
-    const summary = summaries.get(parentId);
-    if (summary) {
-      summary.latestReply = toLatestReplyPayload(reply);
+  latestReplies.forEach(
+    (reply: Prisma.MessageGetPayload<{ select: typeof latestReplySelect }>) => {
+      const parentId = reply.parentMessageId;
+      if (!parentId) return;
+      const summary = summaries.get(parentId);
+      if (summary) {
+        summary.latestReply = toLatestReplyPayload(reply);
+      }
     }
-  });
+  );
 
   return summaries;
 }
