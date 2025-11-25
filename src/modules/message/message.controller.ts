@@ -38,13 +38,13 @@ const searchQuerySchema = paginationSchema.extend({
 // POST payload guard for message creation.
 const createMessageSchema = z.object({
   content: z.string().min(1),
-  parentMessageId: z.string().trim().min(1).optional(),
+  parentMessageId: z.string().trim().min(1).nullable().optional(),
 });
 
 // Optional caption text for file uploads.
 const uploadBodySchema = z.object({
   content: z.string().optional(),
-  parentMessageId: z.string().trim().min(1).optional(),
+  parentMessageId: z.string().trim().min(1).nullable().optional(),
 });
 
 function getStoragePathFromUrl(url: string) {
