@@ -9,7 +9,6 @@ import {
   pinMessage,
   unpinMessage,
   searchCourseMessages,
-  fetchMessageReplies,
   createFileMessage,
 } from "./message.service";
 import { AppError } from "../../utils/errors";
@@ -19,7 +18,6 @@ import {
   broadcastCourseMessage,
   broadcastCourseMessagePinned,
   broadcastCourseMessageUnpinned,
-  broadcastCourseReplySummary,
 } from "../../sockets/chat.handlers";
 import { UserRole } from "@prisma/client";
 import { Server } from "socket.io";
@@ -119,13 +117,11 @@ export const searchCourseMessagesHandler = asyncHandler(
   }
 );
 
-// GET /api/courses/:courseId/messages/:messageId/replies
+// Legacy thread endpoint retained for backward compatibility only.
 export const listMessageReplies = asyncHandler(
   async (req: Request, res: Response) => {
     const userId = req.user?.id;
-    const userRole = req.user?.role;
     const courseId = req.params.courseId;
-    const messageId = req.params.messageId;
 
     if (!userId) {
       throw new AppError(
@@ -134,47 +130,16 @@ export const listMessageReplies = asyncHandler(
       );
     }
 
-    if (!courseId || !messageId) {
-      throw new AppError(
-        StatusCodes.BAD_REQUEST,
-        "Course ID and message ID are required"
-      );
+    if (!courseId) {
+      throw new AppError(StatusCodes.BAD_REQUEST, "Course ID is required");
     }
 
-    if (userRole === UserRole.ADMIN) {
-      await prisma.course.findUniqueOrThrow({
-        where: { id: courseId },
-        select: { id: true },
-      });
-    } else {
-      await ensureCourseMembership(courseId, userId);
-    }
+    await ensureCourseMembership(courseId, userId);
 
-    const parentMessage = await prisma.message.findUnique({
-      where: { id: messageId },
-      select: { id: true, courseId: true, parentMessageId: true },
+    res.status(StatusCodes.GONE).json({
+      message:
+        "Threaded replies have been removed. Fetch the main course messages timeline instead.",
     });
-
-    if (!parentMessage || parentMessage.courseId !== courseId) {
-      throw new AppError(StatusCodes.NOT_FOUND, "Message not found");
-    }
-
-    if (parentMessage.parentMessageId) {
-      throw new AppError(
-        StatusCodes.BAD_REQUEST,
-        "Replies can only be fetched for top-level messages"
-      );
-    }
-
-    const { limit, cursor } = paginationSchema.parse(req.query);
-    const result = await fetchMessageReplies(
-      courseId,
-      messageId,
-      limit,
-      cursor
-    );
-
-    res.status(StatusCodes.OK).json(result);
   }
 );
 
@@ -260,19 +225,16 @@ export const createCourseMessage = asyncHandler(
 
     await ensureCourseMembership(courseId, userId);
     const { content, parentMessageId } = createMessageSchema.parse(req.body);
-    const result = await createTextMessage(
+    const message = await createTextMessage(
       courseId,
       userId,
       content,
       parentMessageId ?? null
     );
 
-    broadcastCourseMessage(getSocketInstance(req), result.message);
-    if (result.parentUpdate) {
-      broadcastCourseReplySummary(getSocketInstance(req), result.parentUpdate);
-    }
+    broadcastCourseMessage(getSocketInstance(req), message);
 
-    res.status(StatusCodes.CREATED).json(result.message);
+    res.status(StatusCodes.CREATED).json(message);
   }
 );
 
@@ -302,7 +264,7 @@ export const uploadCourseFile = asyncHandler(
       mimeType: req.file.mimetype,
     });
 
-    const result = await createFileMessage({
+    const message = await createFileMessage({
       courseId,
       senderId: userId,
       content: body.content ?? null,
@@ -315,12 +277,9 @@ export const uploadCourseFile = asyncHandler(
       },
     });
 
-    broadcastCourseMessage(getSocketInstance(req), result.message);
-    if (result.parentUpdate) {
-      broadcastCourseReplySummary(getSocketInstance(req), result.parentUpdate);
-    }
+    broadcastCourseMessage(getSocketInstance(req), message);
 
-    res.status(StatusCodes.CREATED).json(result.message);
+    res.status(StatusCodes.CREATED).json(message);
   }
 );
 

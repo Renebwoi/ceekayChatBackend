@@ -5,7 +5,6 @@ import { ensureCourseMembership } from "../middleware/auth";
 import {
   createTextMessage,
   serializeMessage,
-  ReplySummaryPayload,
 } from "../modules/message/message.service";
 import { AppError } from "../utils/errors";
 
@@ -46,17 +45,14 @@ export function registerChatHandlers(io: Server) {
           }
 
           await ensureCourseMembership(data.courseId, userId);
-          const result = await createTextMessage(
+          const message = await createTextMessage(
             data.courseId,
             userId,
             data.content,
             data.parentMessageId ?? null
           );
-          broadcastCourseMessage(io, result.message);
-          if (result.parentUpdate) {
-            broadcastCourseReplySummary(io, result.parentUpdate);
-          }
-          callback?.({ status: "ok", message: result.message });
+          broadcastCourseMessage(io, message);
+          callback?.({ status: "ok", message });
         } catch (error) {
           const message =
             error instanceof Error ? error.message : "Unknown error";
@@ -91,14 +87,6 @@ export function broadcastCourseMessage(
 ) {
   if (!io) return;
   io.to(message.courseId).emit("course_message:new", message);
-}
-
-export function broadcastCourseReplySummary(
-  io: Server | undefined,
-  payload: ReplySummaryPayload
-) {
-  if (!io) return;
-  io.to(payload.courseId).emit("course_message:reply_count", payload);
 }
 
 export function broadcastCourseMessagePinned(

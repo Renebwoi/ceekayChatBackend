@@ -1,9 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { MessageType, UserRole } from "@prisma/client";
-import type {
-  ReplySummaryPayload,
-  SerializedMessage,
-} from "../src/modules/message/message.service";
+import type { SerializedMessage } from "../src/modules/message/message.service";
 
 interface UserRecord {
   id: string;
@@ -27,26 +24,39 @@ interface MessageRecord {
   deleted: boolean;
 }
 
+interface AttachmentRecord {
+  id: string;
+  messageId: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  url: string;
+}
+
 interface TestState {
   users: Map<string, UserRecord>;
   messages: Map<string, MessageRecord>;
-  replies: MessageRecord[];
-  attachments: Map<string, { messageId: string }>;
-  nextId: number;
+  attachments: Map<string, AttachmentRecord>;
+  nextMessageId: number;
+  nextAttachmentId: number;
   timestamp: number;
 }
 
 const state: TestState = {
   users: new Map(),
   messages: new Map(),
-  replies: [],
   attachments: new Map(),
-  nextId: 1,
+  nextMessageId: 1,
+  nextAttachmentId: 1,
   timestamp: 0,
 };
 
 function nextMessageId() {
-  return `msg-${state.nextId++}`;
+  return `msg-${state.nextMessageId++}`;
+}
+
+function nextAttachmentId() {
+  return `att-${state.nextAttachmentId++}`;
 }
 
 function nextDate() {
@@ -78,29 +88,11 @@ function resetState() {
     ],
   ]);
 
-  state.messages = new Map([
-    [
-      "parent-1",
-      {
-        id: "parent-1",
-        courseId: "course-1",
-        senderId: "user-1",
-        parentMessageId: null,
-        content: "Parent message",
-        type: MessageType.TEXT,
-        createdAt: nextDate(),
-        pinned: false,
-        pinnedAt: null,
-        pinnedById: null,
-        deleted: false,
-      },
-    ],
-  ]);
-
-  state.replies = [];
+  state.messages = new Map();
   state.attachments = new Map();
-  state.nextId = 1;
-  state.timestamp = 1; // ensure replies are after parent
+  state.nextMessageId = 1;
+  state.nextAttachmentId = 1;
+  state.timestamp = 0;
 }
 
 function pickUser(userId: string | null, select: Record<string, boolean>) {
@@ -108,9 +100,23 @@ function pickUser(userId: string | null, select: Record<string, boolean>) {
   const user = state.users.get(userId);
   if (!user) return null;
   const result: Record<string, unknown> = {};
+  const source = user as unknown as Record<string, unknown>;
   for (const key of Object.keys(select)) {
-    if (select[key as keyof typeof select]) {
-      result[key] = (user as Record<string, unknown>)[key];
+    if (select[key]) {
+      result[key] = source[key];
+    }
+  }
+  return result;
+}
+
+function pickAttachment(messageId: string, select: Record<string, boolean>) {
+  const attachment = state.attachments.get(messageId);
+  if (!attachment) return null;
+  const result: Record<string, unknown> = {};
+  const source = attachment as unknown as Record<string, unknown>;
+  for (const key of Object.keys(select)) {
+    if (select[key]) {
+      result[key] = source[key];
     }
   }
   return result;
@@ -135,11 +141,23 @@ function applySelect(record: MessageRecord, select: Record<string, any>) {
         break;
       }
       case "attachment": {
-        result.attachment = null;
+        result.attachment = pickAttachment(record.id, value.select ?? value);
+        break;
+      }
+      case "parent": {
+        if (!record.parentMessageId) {
+          result.parent = null;
+          break;
+        }
+        const parent = state.messages.get(record.parentMessageId);
+        result.parent = parent
+          ? applySelect(parent, value.select ?? value)
+          : null;
         break;
       }
       default: {
-        result[key] = (record as Record<string, unknown>)[key];
+        const source = record as unknown as Record<string, unknown>;
+        result[key] = source[key];
         break;
       }
     }
@@ -151,7 +169,41 @@ function applySelect(record: MessageRecord, select: Record<string, any>) {
 function matchesWhere(record: MessageRecord, where: Record<string, any>) {
   if (!where) return true;
 
-  if (where.courseId && record.courseId !== where.courseId) return false;
+  if (where.OR) {
+    const clauses = Array.isArray(where.OR) ? where.OR : [where.OR];
+    if (!clauses.some((clause) => matchesWhere(record, clause))) {
+      return false;
+    }
+  }
+
+  if (where.AND) {
+    const clauses = Array.isArray(where.AND) ? where.AND : [where.AND];
+    if (!clauses.every((clause) => matchesWhere(record, clause))) {
+      return false;
+    }
+  }
+
+  if (where.NOT) {
+    const clauses = Array.isArray(where.NOT) ? where.NOT : [where.NOT];
+    if (clauses.some((clause) => matchesWhere(record, clause))) {
+      return false;
+    }
+  }
+
+  if (where.id && record.id !== where.id) {
+    return false;
+  }
+
+  if (where.courseId && record.courseId !== where.courseId) {
+    return false;
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(where, "deleted") &&
+    record.deleted !== where.deleted
+  ) {
+    return false;
+  }
 
   if (Object.prototype.hasOwnProperty.call(where, "parentMessageId")) {
     const constraint = where.parentMessageId;
@@ -174,15 +226,25 @@ function matchesWhere(record: MessageRecord, where: Record<string, any>) {
     }
   }
 
-  if (
-    Object.prototype.hasOwnProperty.call(where, "deleted") &&
-    record.deleted !== where.deleted
-  ) {
+  if (where.createdAt?.gt && !(record.createdAt > where.createdAt.gt)) {
     return false;
   }
 
-  if (where.createdAt?.gt && !(record.createdAt > where.createdAt.gt)) {
-    return false;
+  if (where.content?.contains) {
+    const haystack = (record.content ?? "").toLowerCase();
+    const needle = where.content.contains.toLowerCase();
+    if (!haystack.includes(needle)) {
+      return false;
+    }
+  }
+
+  if (where.attachment?.fileName?.contains) {
+    const attachment = state.attachments.get(record.id);
+    const haystack = (attachment?.fileName ?? "").toLowerCase();
+    const needle = where.attachment.fileName.contains.toLowerCase();
+    if (!haystack.includes(needle)) {
+      return false;
+    }
   }
 
   return true;
@@ -199,8 +261,24 @@ function sortRecords(records: MessageRecord[], orderBy?: any) {
       ];
       const aValue = a[field];
       const bValue = b[field];
-      if (aValue < bValue) return direction === "asc" ? -1 : 1;
-      if (aValue > bValue) return direction === "asc" ? 1 : -1;
+
+      if (aValue === bValue) {
+        continue;
+      }
+
+      if (aValue == null) {
+        return direction === "asc" ? 1 : -1;
+      }
+
+      if (bValue == null) {
+        return direction === "asc" ? -1 : 1;
+      }
+
+      if (aValue < bValue) {
+        return direction === "asc" ? -1 : 1;
+      }
+
+      return direction === "asc" ? 1 : -1;
     }
     return 0;
   });
@@ -212,10 +290,7 @@ const fakePrisma = {
   ),
   message: {
     findUnique: vi.fn(async ({ where, select }: any) => {
-      const record =
-        state.messages.get(where.id) ??
-        state.replies.find((item) => item.id === where.id) ??
-        null;
+      const record = state.messages.get(where.id) ?? null;
       if (!record) return null;
       return select ? applySelect(record, select) : { ...record };
     }),
@@ -241,103 +316,62 @@ const fakePrisma = {
         deleted: false,
       };
 
-      if (record.parentMessageId) {
-        state.replies.push(record);
-      } else {
-        state.messages.set(record.id, record);
-      }
-
-      return record;
+      state.messages.set(record.id, record);
+      return { ...record };
     }),
-    findMany: vi.fn(async (args: any) => {
-      const where = args?.where ?? {};
-      let records: MessageRecord[] = [];
+    findMany: vi.fn(async (args: any = {}) => {
+      const where = args.where ?? {};
+      let records = Array.from(state.messages.values()).filter((record) =>
+        matchesWhere(record, where)
+      );
 
-      if (Object.prototype.hasOwnProperty.call(where, "parentMessageId")) {
-        const constraint = where.parentMessageId;
-        if (
-          constraint &&
-          typeof constraint === "object" &&
-          Array.isArray(constraint.in)
-        ) {
-          records = state.replies.filter((item) =>
-            constraint.in.includes(item.parentMessageId)
-          );
-        } else if (typeof constraint === "string") {
-          records = state.replies.filter(
-            (item) => item.parentMessageId === constraint
-          );
-        } else if (constraint === null) {
-          records = [...state.messages.values()].filter(
-            (item) => item.parentMessageId === null
-          );
-        } else {
-          records = [...state.replies];
+      records = sortRecords(records, args.orderBy);
+
+      if (args.cursor?.id) {
+        const index = records.findIndex((item) => item.id === args.cursor.id);
+        if (index >= 0) {
+          records = records.slice(index + (args.skip ?? 0));
         }
-      } else {
-        records = [...state.messages.values(), ...state.replies];
+      } else if (typeof args.skip === "number" && args.skip > 0) {
+        records = records.slice(args.skip);
       }
 
-      records = records.filter((record) => matchesWhere(record, where));
-      records = sortRecords(records, args?.orderBy);
-
-      if (Array.isArray(args?.distinct) && args.distinct.length > 0) {
-        const [field] = args.distinct as Array<keyof MessageRecord>;
-        const seen = new Set<any>();
-        records = records.filter((record) => {
-          const value = (record as any)[field];
-          if (seen.has(value)) {
-            return false;
-          }
-          seen.add(value);
-          return true;
-        });
-      }
-
-      if (typeof args?.take === "number") {
+      if (typeof args.take === "number") {
         records = records.slice(0, args.take);
       }
 
-      if (args?.select) {
+      if (args.select) {
         return records.map((record) => applySelect(record, args.select));
       }
 
       return records.map((record) => ({ ...record }));
     }),
-    groupBy: vi.fn(async ({ where, _count }: any) => {
-      const ids: string[] = where.parentMessageId.in ?? [];
-      if (!_count?.parentMessageId) {
-        return [];
-      }
-      return ids
-        .map((id) => ({
-          parentMessageId: id,
-          _count: {
-            parentMessageId: state.replies.filter(
-              (reply) => reply.parentMessageId === id
-            ).length,
-          },
-        }))
-        .filter((row) => row._count.parentMessageId > 0);
-    }),
     count: vi.fn(async ({ where }: any) => {
-      const records = [...state.messages.values(), ...state.replies];
-      return records.filter((record) => matchesWhere(record, where)).length;
+      return Array.from(state.messages.values()).filter((record) =>
+        matchesWhere(record, where ?? {})
+      ).length;
     }),
-    updateMany: vi.fn(async () => ({ count: 0 })),
+    updateMany: vi.fn(async ({ where, data }: any) => {
+      let count = 0;
+      for (const record of state.messages.values()) {
+        if (matchesWhere(record, where ?? {})) {
+          Object.assign(record, data);
+          count += 1;
+        }
+      }
+      return { count };
+    }),
     update: vi.fn(async ({ where, data, select }: any) => {
-      const record =
-        state.messages.get(where.id) ||
-        state.replies.find((item) => item.id === where.id);
+      const record = state.messages.get(where.id);
       if (!record) {
         throw new Error("Not found");
       }
       Object.assign(record, data);
       return select ? applySelect(record, select) : { ...record };
     }),
-    findFirst: vi.fn(async ({ where, select }: any) => {
-      const record = [...state.messages.values(), ...state.replies].find(
-        (item) => matchesWhere(item, where)
+    findFirst: vi.fn(async ({ where, select }: any = {}) => {
+      const record = Array.from(state.messages.values()).find((item) =>
+        matchesWhere(item, where ?? {})
       );
       if (!record) return null;
       return select ? applySelect(record, select) : { ...record };
@@ -345,9 +379,16 @@ const fakePrisma = {
   },
   attachment: {
     create: vi.fn(async ({ data }: any) => {
-      const id = `att-${state.nextId++}`;
-      state.attachments.set(id, { messageId: data.messageId });
-      return { id, ...data };
+      const record: AttachmentRecord = {
+        id: nextAttachmentId(),
+        messageId: data.messageId,
+        fileName: data.fileName,
+        mimeType: data.mimeType,
+        size: data.size,
+        url: data.url,
+      };
+      state.attachments.set(record.messageId, record);
+      return { ...record };
     }),
   },
   course: {
@@ -362,29 +403,17 @@ let createTextMessage: (
   senderId: string,
   content: string,
   parentMessageId?: string | null
-) => Promise<{
-  message: SerializedMessage;
-  parentUpdate?: ReplySummaryPayload;
-}>;
-let fetchMessageReplies: (
+) => Promise<SerializedMessage>;
+let fetchCourseMessages: (
   courseId: string,
-  messageId: string,
   limit?: number,
   cursor?: string
-) => Promise<{ replies: SerializedMessage[]; nextCursor: string | null }>;
-let broadcastCourseReplySummary: (
-  io: any,
-  payload: ReplySummaryPayload
-) => void;
-let broadcastCourseMessage: (io: any, message: SerializedMessage) => void;
+) => Promise<{ messages: SerializedMessage[]; nextCursor: string | null }>;
 
 beforeAll(async () => {
   const messageService = await import("../src/modules/message/message.service");
   createTextMessage = messageService.createTextMessage;
-  fetchMessageReplies = messageService.fetchMessageReplies;
-  const socketHandlers = await import("../src/sockets/chat.handlers");
-  broadcastCourseReplySummary = socketHandlers.broadcastCourseReplySummary;
-  broadcastCourseMessage = socketHandlers.broadcastCourseMessage;
+  fetchCourseMessages = messageService.fetchCourseMessages;
 });
 
 beforeEach(() => {
@@ -392,101 +421,124 @@ beforeEach(() => {
   resetState();
 });
 
-describe("threaded message replies", () => {
-  it("creates a reply and returns parent summary payload", async () => {
-    const result = await createTextMessage(
+describe("inline message replies", () => {
+  it("includes reply metadata when creating a reply", async () => {
+    const parent = await createTextMessage(
+      "course-1",
+      "user-1",
+      "Parent message"
+    );
+    const reply = await createTextMessage(
       "course-1",
       "user-2",
-      "First reply",
-      "parent-1"
+      "Reply content",
+      parent.id
     );
 
-    expect(result.message.parentMessageId).toBe("parent-1");
-    expect(result.message.replyCount).toBe(0);
-    expect(result.message.latestReply).toBeNull();
-    expect(result.parentUpdate).toMatchObject({
-      courseId: "course-1",
-      messageId: "parent-1",
-      replyCount: 1,
-    });
-    expect(result.parentUpdate?.latestReply?.preview).toBe("First reply");
-  });
-
-  it("fetches replies in chronological order and updates counts", async () => {
-    await createTextMessage("course-1", "user-2", "First", "parent-1");
-    await createTextMessage("course-1", "user-2", "Second", "parent-1");
-
-    const replies = await fetchMessageReplies("course-1", "parent-1");
-
-    expect(replies.replies).toHaveLength(2);
-    expect(replies.replies[0].content).toBe("First");
-    expect(replies.replies[1].content).toBe("Second");
-    expect(replies.nextCursor).toBeNull();
-
-    const lastParentUpdate = await createTextMessage(
-      "course-1",
-      "user-2",
-      "Third",
-      "parent-1"
-    );
-
-    expect(lastParentUpdate.parentUpdate?.replyCount).toBe(3);
-    expect(lastParentUpdate.parentUpdate?.latestReply?.preview).toBe("Third");
-  });
-
-  it("emits socket events for messages and reply summaries", () => {
-    const emitSpy = vi.fn();
-    const io = {
-      to: vi.fn(() => ({ emit: emitSpy })),
-    };
-
-    const message = {
-      id: "msg-123",
-      courseId: "course-1",
-      senderId: "user-2",
-      content: "Reply",
+    expect(parent.replyTo).toBeNull();
+    expect(reply.parentMessageId).toBe(parent.id);
+    expect(reply.replyTo).toEqual({
+      id: parent.id,
+      senderName: "Parent Author",
+      contentSnippet: "Parent message",
       type: MessageType.TEXT,
-      createdAt: new Date(),
-      parentMessageId: "parent-1",
-      replyCount: 0,
-      latestReply: null,
-      attachment: null,
-      pinned: false,
-      pinnedAt: null,
-      pinnedBy: null,
-      sender: pickUser("user-2", {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        department: true,
-      }),
-      deleted: false,
-    } as unknown as SerializedMessage;
+    });
+  });
 
-    broadcastCourseMessage(io, message);
-    expect(io.to).toHaveBeenCalledWith("course-1");
-    expect(emitSpy).toHaveBeenCalledWith("course_message:new", message);
+  it("rejects replies targeting a message in another course", async () => {
+    const foreignParent = await createTextMessage(
+      "course-2",
+      "user-1",
+      "Foreign course message"
+    );
 
-    const summary: ReplySummaryPayload = {
-      courseId: "course-1",
-      messageId: "parent-1",
-      replyCount: 5,
-      latestReply: {
-        id: "msg-xyz",
-        sender: pickUser("user-2", {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-          department: true,
-        })!,
-        preview: "Preview",
-        createdAt: new Date(),
-      },
-    };
+    await expect(
+      createTextMessage(
+        "course-1",
+        "user-2",
+        "Cross course reply",
+        foreignParent.id
+      )
+    ).rejects.toThrow("Parent message not found in this course");
+  });
 
-    broadcastCourseReplySummary(io, summary);
-    expect(emitSpy).toHaveBeenCalledWith("course_message:reply_count", summary);
+  it("rejects replies to deleted messages", async () => {
+    const parent = await createTextMessage(
+      "course-1",
+      "user-1",
+      "Will be deleted"
+    );
+
+    const storedParent = state.messages.get(parent.id);
+    if (!storedParent) {
+      throw new Error("Parent message missing in test state");
+    }
+    storedParent.deleted = true;
+
+    await expect(
+      createTextMessage(
+        "course-1",
+        "user-2",
+        "Reply to deleted",
+        parent.id
+      )
+    ).rejects.toThrow("Cannot reply to a deleted message");
+  });
+
+  it("returns messages in chronological order with inline reply metadata", async () => {
+    const parent = await createTextMessage(
+      "course-1",
+      "user-1",
+      "Timeline parent"
+    );
+    const reply = await createTextMessage(
+      "course-1",
+      "user-2",
+      "Timeline reply",
+      parent.id
+    );
+    const another = await createTextMessage(
+      "course-1",
+      "user-1",
+      "Timeline follower"
+    );
+
+    const { messages, nextCursor } = await fetchCourseMessages("course-1");
+
+    expect(messages.map((message) => message.id)).toEqual([
+      parent.id,
+      reply.id,
+      another.id,
+    ]);
+    expect(messages[0].replyTo).toBeNull();
+    expect(messages[1].replyTo).toEqual({
+      id: parent.id,
+      senderName: "Parent Author",
+      contentSnippet: "Timeline parent",
+      type: MessageType.TEXT,
+    });
+    expect(messages[2].replyTo).toBeNull();
+    expect(nextCursor).toBeNull();
+  });
+
+  it("truncates long parent content in reply snippets", async () => {
+    const longContent = "x".repeat(150);
+    const parent = await createTextMessage(
+      "course-1",
+      "user-1",
+      longContent
+    );
+
+    const reply = await createTextMessage(
+      "course-1",
+      "user-2",
+      "Reply to long content",
+      parent.id
+    );
+
+    expect(reply.replyTo).not.toBeNull();
+    expect(reply.replyTo?.contentSnippet).toBeDefined();
+    expect(reply.replyTo?.contentSnippet?.length).toBeLessThan(longContent.length);
+    expect(reply.replyTo?.contentSnippet?.endsWith("…")).toBe(true);
   });
 });

@@ -19,21 +19,24 @@ const attachmentSelect = {
   url: true,
 };
 
-const latestReplySelect = {
+const parentSelect = {
   id: true,
-  courseId: true,
-  parentMessageId: true,
+  type: true,
   content: true,
-  createdAt: true,
   sender: {
-    select: userSelect,
+    select: {
+      id: true,
+      name: true,
+    },
   },
   attachment: {
     select: {
       fileName: true,
     },
   },
-};
+} satisfies Prisma.MessageSelect;
+
+const CONTENT_SNIPPET_MAX_LENGTH = 120;
 
 // Shared selection used by both REST and Socket.io responses.
 export const messageSelect = {
@@ -56,56 +59,50 @@ export const messageSelect = {
     select: attachmentSelect,
   },
   deleted: true,
+  parent: {
+    select: parentSelect,
+  },
 } satisfies Prisma.MessageSelect;
 
 export type MessageWithRelations = Prisma.MessageGetPayload<{
   select: typeof messageSelect;
 }>;
 
-type ReplySummary = {
-  replyCount: number;
-  latestReply: LatestReply | null;
-};
-
 type PrismaClientOrTx = Prisma.TransactionClient | typeof prisma;
 
-function defaultReplySummary(): ReplySummary {
-  return { replyCount: 0, latestReply: null };
+function truncateSnippet(value: string, maxLength = CONTENT_SNIPPET_MAX_LENGTH) {
+  if (value.length <= maxLength) {
+    return value;
+  }
+  return `${value.slice(0, maxLength - 1)}…`;
 }
 
-function previewFromMessage(
-  message: Pick<MessageWithRelations, "content"> & {
-    attachment?: { fileName: string } | null;
-  }
-) {
-  if (message.content && message.content.trim().length > 0) {
-    return message.content;
+function buildReplyTo(message: MessageWithRelations) {
+  const parent = message.parent;
+  if (!parent) {
+    return null;
   }
 
-  if (message.attachment?.fileName) {
-    return message.attachment.fileName;
+  const trimmedContent = parent.content?.trim();
+  let snippet: string | null = null;
+
+  if (trimmedContent) {
+    snippet = truncateSnippet(trimmedContent);
+  } else if (parent.attachment?.fileName) {
+    snippet = parent.attachment.fileName;
+  } else if (parent.type === MessageType.FILE) {
+    snippet = "File attachment";
   }
 
-  return null;
-}
-
-function toLatestReplyPayload(
-  message: Prisma.MessageGetPayload<{ select: typeof latestReplySelect }>
-) {
   return {
-    id: message.id,
-    sender: message.sender,
-    preview: previewFromMessage(message),
-    createdAt: message.createdAt,
-  };
+    id: parent.id,
+    senderName: parent.sender.name,
+    contentSnippet: snippet,
+    type: parent.type,
+  } as const;
 }
 
-export type LatestReply = ReturnType<typeof toLatestReplyPayload>;
-
-export function serializeMessage(
-  message: MessageWithRelations,
-  summary: ReplySummary = defaultReplySummary()
-) {
+export function serializeMessage(message: MessageWithRelations) {
   const attachment = message.attachment
     ? {
         ...message.attachment,
@@ -114,113 +111,40 @@ export function serializeMessage(
     : null;
 
   return {
-    ...message,
+    id: message.id,
+    courseId: message.courseId,
     senderId: message.senderId,
+    content: message.content,
+    type: message.type,
+    createdAt: message.createdAt,
     attachment,
+    sender: message.sender,
     pinned: message.pinned ?? false,
     pinnedAt: message.pinnedAt ?? null,
     pinnedBy: message.pinnedBy ?? null,
     parentMessageId: message.parentMessageId ?? null,
+    replyTo: buildReplyTo(message),
     deleted: message.deleted ?? false,
-    replyCount: summary.replyCount,
-    latestReply: summary.latestReply,
-  };
+  } as const;
 }
 
 export type SerializedMessage = ReturnType<typeof serializeMessage>;
 
-async function fetchReplySummaries(
-  messageIds: string[],
-  client: PrismaClientOrTx = prisma
-) {
-  const ids = Array.from(new Set(messageIds.filter(Boolean)));
-  const summaries = new Map<string, ReplySummary>();
-
-  ids.forEach((id) => summaries.set(id, defaultReplySummary()));
-
-  if (ids.length === 0) {
-    return summaries;
-  }
-
-  const counts = await client.message.groupBy({
-    by: ["parentMessageId"],
-    where: {
-      parentMessageId: { in: ids },
-      deleted: false,
-    },
-    _count: {
-      parentMessageId: true,
-    },
-  });
-
-  counts.forEach((row) => {
-    const parentId = row.parentMessageId;
-    if (!parentId) return;
-    const summary = summaries.get(parentId);
-    if (summary) {
-      summary.replyCount = row._count.parentMessageId;
-    }
-  });
-
-  const latestReplies = await client.message.findMany({
-    where: {
-      parentMessageId: { in: ids },
-      deleted: false,
-    },
-    orderBy: [{ parentMessageId: "asc" }, { createdAt: "desc" }],
-    distinct: [Prisma.MessageScalarFieldEnum.parentMessageId],
-    select: latestReplySelect,
-  });
-
-  latestReplies.forEach(
-    (reply: Prisma.MessageGetPayload<{ select: typeof latestReplySelect }>) => {
-      const parentId = reply.parentMessageId;
-      if (!parentId) return;
-      const summary = summaries.get(parentId);
-      if (summary) {
-        summary.latestReply = toLatestReplyPayload(reply);
-      }
-    }
-  );
-
-  return summaries;
-}
-
-async function serializeMessagesWithSummaries(
-  messages: MessageWithRelations[],
-  client: PrismaClientOrTx = prisma
-) {
-  const topLevelIds = messages
-    .filter((message) => !message.parentMessageId)
-    .map((message) => message.id);
-
-  const summaries = await fetchReplySummaries(topLevelIds, client);
-
-  return messages.map((message) =>
-    serializeMessage(
-      message,
-      message.parentMessageId
-        ? defaultReplySummary()
-        : summaries.get(message.id) ?? defaultReplySummary()
-    )
-  );
-}
-
-// Cursor-paginated read of a course's top-level messages ordered chronologically.
+// Cursor-paginated read of a course's messages ordered chronologically.
 export async function fetchCourseMessages(
   courseId: string,
   limit = 20,
   cursor?: string
 ) {
   const messages = await prisma.message.findMany({
-    where: { courseId, parentMessageId: null, deleted: false },
+    where: { courseId, deleted: false },
     orderBy: { createdAt: "asc" },
     take: limit,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     select: messageSelect,
   });
 
-  const serialized = await serializeMessagesWithSummaries(messages);
+  const serialized = messages.map(serializeMessage);
   const nextCursor =
     messages.length === limit ? messages[messages.length - 1].id : null;
 
@@ -263,7 +187,7 @@ export async function searchCourseMessages(
     select: messageSelect,
   });
 
-  const serialized = await serializeMessagesWithSummaries(messages);
+  const serialized = messages.map(serializeMessage);
   const nextCursor =
     messages.length === limit ? messages[messages.length - 1].id : null;
 
@@ -272,18 +196,6 @@ export async function searchCourseMessages(
     nextCursor,
   };
 }
-
-export type ReplySummaryPayload = {
-  courseId: string;
-  messageId: string;
-  replyCount: number;
-  latestReply: LatestReply | null;
-};
-
-export type CreateMessageResult = {
-  message: SerializedMessage;
-  parentUpdate?: ReplySummaryPayload;
-};
 
 type CreateMessageArgs = {
   courseId: string;
@@ -304,7 +216,7 @@ export async function createTextMessage(
   senderId: string,
   content: string,
   parentMessageId: string | null = null
-): Promise<CreateMessageResult> {
+): Promise<SerializedMessage> {
   return createMessageInternal({
     courseId,
     senderId,
@@ -316,7 +228,7 @@ export async function createTextMessage(
 
 export async function createFileMessage(
   args: Omit<CreateMessageArgs, "type">
-): Promise<CreateMessageResult> {
+): Promise<SerializedMessage> {
   return createMessageInternal({ ...args, type: MessageType.FILE });
 }
 
@@ -330,7 +242,6 @@ async function loadParentMessage(
     select: {
       id: true,
       courseId: true,
-      parentMessageId: true,
       deleted: true,
     },
   });
@@ -342,13 +253,6 @@ async function loadParentMessage(
     );
   }
 
-  if (parent.parentMessageId) {
-    throw new AppError(
-      StatusCodes.BAD_REQUEST,
-      "Replies can only target top-level messages"
-    );
-  }
-
   if (parent.deleted) {
     throw new AppError(
       StatusCodes.BAD_REQUEST,
@@ -356,24 +260,8 @@ async function loadParentMessage(
     );
   }
 
-  return { id: parent.id, courseId: parent.courseId };
+  return parent.id;
 }
-
-async function buildParentSummary(
-  client: PrismaClientOrTx,
-  parent: { id: string; courseId: string }
-): Promise<ReplySummaryPayload> {
-  const summaries = await fetchReplySummaries([parent.id], client);
-  const summary = summaries.get(parent.id) ?? defaultReplySummary();
-
-  return {
-    courseId: parent.courseId,
-    messageId: parent.id,
-    replyCount: summary.replyCount,
-    latestReply: summary.latestReply,
-  };
-}
-
 async function createMessageInternal({
   courseId,
   senderId,
@@ -381,9 +269,9 @@ async function createMessageInternal({
   type,
   parentMessageId = null,
   attachment = null,
-}: CreateMessageArgs): Promise<CreateMessageResult> {
+}: CreateMessageArgs): Promise<SerializedMessage> {
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-    const parent = parentMessageId
+    const parentId = parentMessageId
       ? await loadParentMessage(tx, courseId, parentMessageId)
       : null;
 
@@ -393,7 +281,7 @@ async function createMessageInternal({
         senderId,
         content,
         type,
-        parentMessageId: parent?.id ?? null,
+        parentMessageId: parentId,
       },
     });
 
@@ -414,16 +302,7 @@ async function createMessageInternal({
       select: messageSelect,
     });
 
-    const [serialized] = await serializeMessagesWithSummaries([hydrated], tx);
-
-    const parentUpdate = parent
-      ? await buildParentSummary(tx, parent)
-      : undefined;
-
-    return {
-      message: serialized,
-      parentUpdate,
-    };
+    return serializeMessage(hydrated as MessageWithRelations);
   });
 }
 
@@ -436,34 +315,6 @@ async function ensureMessageInCourse(messageId: string, courseId: string) {
   if (!exists) {
     notFound("Message not found in this course");
   }
-}
-
-export async function fetchMessageReplies(
-  courseId: string,
-  messageId: string,
-  limit = 20,
-  cursor?: string
-) {
-  const replies = await prisma.message.findMany({
-    where: {
-      courseId,
-      parentMessageId: messageId,
-      deleted: false,
-    },
-    orderBy: { createdAt: "asc" },
-    take: limit,
-    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    select: messageSelect,
-  });
-
-  const serialized = await serializeMessagesWithSummaries(replies);
-  const nextCursor =
-    replies.length === limit ? replies[replies.length - 1].id : null;
-
-  return {
-    replies: serialized,
-    nextCursor,
-  };
 }
 
 export async function pinMessage(
@@ -497,13 +348,8 @@ export async function pinMessage(
         },
         select: messageSelect,
       });
-
-      const [serialized] = await serializeMessagesWithSummaries(
-        [updated as MessageWithRelations],
-        tx
-      );
-
-      return serialized;
+ 
+      return serializeMessage(updated as MessageWithRelations);
     }
   );
 
@@ -522,10 +368,6 @@ export async function unpinMessage(courseId: string, messageId: string) {
     },
     select: messageSelect,
   });
-
-  const [serialized] = await serializeMessagesWithSummaries([
-    updated as MessageWithRelations,
-  ]);
-
-  return serialized;
+ 
+  return serializeMessage(updated as MessageWithRelations);
 }
