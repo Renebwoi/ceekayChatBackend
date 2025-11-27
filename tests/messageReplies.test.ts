@@ -476,12 +476,7 @@ describe("inline message replies", () => {
     storedParent.deleted = true;
 
     await expect(
-      createTextMessage(
-        "course-1",
-        "user-2",
-        "Reply to deleted",
-        parent.id
-      )
+      createTextMessage("course-1", "user-2", "Reply to deleted", parent.id)
     ).rejects.toThrow("Cannot reply to a deleted message");
   });
 
@@ -523,11 +518,7 @@ describe("inline message replies", () => {
 
   it("truncates long parent content in reply snippets", async () => {
     const longContent = "x".repeat(150);
-    const parent = await createTextMessage(
-      "course-1",
-      "user-1",
-      longContent
-    );
+    const parent = await createTextMessage("course-1", "user-1", longContent);
 
     const reply = await createTextMessage(
       "course-1",
@@ -538,7 +529,9 @@ describe("inline message replies", () => {
 
     expect(reply.replyTo).not.toBeNull();
     expect(reply.replyTo?.contentSnippet).toBeDefined();
-    expect(reply.replyTo?.contentSnippet?.length).toBeLessThan(longContent.length);
+    expect(reply.replyTo?.contentSnippet?.length).toBeLessThan(
+      longContent.length
+    );
     expect(reply.replyTo?.contentSnippet?.endsWith("…")).toBe(true);
   });
 });

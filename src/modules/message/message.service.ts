@@ -70,7 +70,10 @@ export type MessageWithRelations = Prisma.MessageGetPayload<{
 
 type PrismaClientOrTx = Prisma.TransactionClient | typeof prisma;
 
-function truncateSnippet(value: string, maxLength = CONTENT_SNIPPET_MAX_LENGTH) {
+function truncateSnippet(
+  value: string,
+  maxLength = CONTENT_SNIPPET_MAX_LENGTH
+) {
   if (value.length <= maxLength) {
     return value;
   }
@@ -348,7 +351,7 @@ export async function pinMessage(
         },
         select: messageSelect,
       });
- 
+
       return serializeMessage(updated as MessageWithRelations);
     }
   );
@@ -368,6 +371,6 @@ export async function unpinMessage(courseId: string, messageId: string) {
     },
     select: messageSelect,
   });
- 
+
   return serializeMessage(updated as MessageWithRelations);
 }
